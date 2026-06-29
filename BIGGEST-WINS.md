@@ -1,10 +1,10 @@
-# Biggest Wins — Easy Token/Cost Cuts (≈15 min total)
+# Biggest Wins — Easy Token/Cost Cuts (≈10 min total)
 
-The shortlist: highest impact, lowest effort, all evidence-backed. Do them top to bottom. Each shows **why it wins** and **exactly what to do** on your Windows + claude-dashboard setup.
+The shortlist: highest impact, lowest effort, all evidence-backed. Each shows **why it wins** and **exactly what to do** on your Windows + claude-dashboard setup.
 
 ---
 
-## ⚡ The 7 quick wins
+## ⚡ The 4 quick wins
 
 ### 1. Stop defaulting to Opus → make Sonnet the default  *(biggest single lever, 1 min)*
 Opus is ~the priciest model; Haiku is **~15× cheaper**, Sonnet far cheaper than Opus and fine for most coding. You're currently defaulted to Opus.
@@ -12,37 +12,25 @@ Opus is ~the priciest model; Haiku is **~15× cheaper**, Sonnet far cheaper than
 - **Make it stick:** add `"model": "sonnet"` to `~/.claude/settings.json` (full file below).
 - *Evidence:* Anthropic recommends Sonnet for most coding; routing studies show ~40–80% saving on non-Opus-worthy work.
 
-### 2. Confirm you're on a Max subscription, not API pay-per-token  *(verify, 1 min)*
-For daily Claude Code use a subscription is **15–30× cheaper** than per-token (Max 20x = $200 flat ≈ $600–1,500 of API value). If you're already on Max/Pro — done. If you're billing per-token for daily work, switch.
-- Check with `/usage`.
-
-### 3. `/clear` between unrelated tasks  *(free habit, biggest ongoing lever)*
-Your bill is dominated by context that gets **re-sent every turn**. Stale context you forgot to clear is pure waste.
-- **Rule:** if you'd open a new doc for it, `/clear` first. Use `/compact focus on code and tests` when you want to keep going mid-task.
-- *Evidence:* Anthropic-recommended; `/compact` measured 70k → ~4k tokens.
-
-### 4. Disable MCP servers you're not using right now  *(30 sec, recurring win)*
-You have 5 connected (n8n, playwright, **tends2 ≈40 tools**, supabase, vapi). Keep only what the task needs.
-- Run `/mcp` → disable the idle ones. Re-enable when needed.
-- Bonus: prefer the **Supabase CLI / `gh`** over their MCP servers for routine ops (zero per-tool overhead).
-
-### 5. Pare your CLAUDE.md + shrink the global one  *(one-time, permanent saving)*
+### 2. Pare your CLAUDE.md + shrink the global one  *(one-time, permanent saving)*
 CLAUDE.md is re-sent every session. Obvious boilerplate is pure tax.
 - Run `/pare-claude-md` on your dashboard's CLAUDE.md (keep < 200 lines, decisions-only).
 - Shrink `~/.claude/CLAUDE.md` to a few universal lines (file below).
 - *Evidence:* we measured −72% size / −580 tokens **every session**.
 
-### 6. Add a one-line "keep it simple" rule  *(free ~20% on coding output)*
+### 3. Add a one-line "keep it simple" rule  *(free ~20% on coding output)*
 - Paste into your project CLAUDE.md: **`Prefer the simplest working solution; no unrequested abstractions. Be concise.`**
 - *Evidence:* the proven part of ponytail (−20% cost); a plain YAGNI line captures most of it, zero install.
 
-### 7. Lower effort for routine work  *(toggle per task)*
-Thinking tokens bill as the pricey **output** kind, default budget can be huge.
+### 4. Lower effort for routine work  *(toggle per task)*
+Thinking tokens bill as the pricey **output** kind, and the default budget can be huge.
 - Use `/effort` → **medium** (or low) for routine edits; reserve high/max for hard problems.
 
 ---
 
-## 📋 Copy-paste configs
+## 📋 Copy-paste configs — and what they actually do
+
+These two files live in your home folder and Claude Code reads them **automatically on every session** — set once, applies forever. You never re-type these preferences again.
 
 ### `~/.claude/settings.json` (merge into yours)
 ```jsonc
@@ -51,6 +39,18 @@ Thinking tokens bill as the pricey **output** kind, default budget can be huge.
   "outputStyle": "Concise",
   "env": { "MAX_THINKING_TOKENS": "8000" },
   "permissions": {
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run lint:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)"
+    ],
     "deny": [
       "Read(**/bin/**)",
       "Read(**/obj/**)",
@@ -62,7 +62,15 @@ Thinking tokens bill as the pricey **output** kind, default budget can be huge.
   }
 }
 ```
-*Why:* Sonnet default + concise replies + capped thinking + Claude never wastes context reading build/vendor junk. (If `outputStyle` isn't picked up on your version, just run `/output-style` → Concise once.)
+
+**What each line does:**
+- `"model": "sonnet"` → defaults every session to Sonnet instead of Opus (win #1, made permanent).
+- `"outputStyle": "Concise"` → tells Claude to keep replies short by default (less output = less cost). *If your version ignores this key, just run `/output-style` → Concise once.*
+- `"env": { "MAX_THINKING_TOKENS": "8000" }` → caps how much "thinking" Claude does per request (thinking is billed at the pricey output rate). 8000 is plenty for normal coding.
+- `"permissions": { "allow": [...] }` → **this is the "stop asking me permission" list.** Each entry auto-approves a safe command so Claude just runs it instead of pausing to ask. Result: fewer interruptions and fewer half-finished turns. I've listed only **safe, non-destructive** commands (build, test, lint, read-only git, `git add`). I deliberately left out anything risky (`git push`, `rm`, `git reset`) so those still ask first.
+- `"permissions": { "deny": [...] }` → blocks Claude from *reading* generated/vendor junk (bin, obj, node_modules, dist, minified, lockfiles). This is the real token saver here — Claude can't accidentally pour a 10,000-line lockfile into context.
+
+> **Easiest way to build your allow-list:** run **`/fewer-permission-prompts`** in Claude Code — it scans what you've already approved and auto-writes a tailored allow-list for you. Or use `/permissions` to manage it interactively. (My list above is a safe starting point you can paste now.)
 
 ### `~/.claude/CLAUDE.md` (keep it tiny — it loads EVERY session)
 ```markdown
@@ -70,11 +78,21 @@ Thinking tokens bill as the pricey **output** kind, default budget can be huge.
 - Be concise. Code blocks and exact errors stay verbatim.
 - Windows: git is at D:\Apps_Installers\Git (not on PATH); no working python3.
 ```
+**What it does:** this is your *global* memory — Claude reads it at the start of every project. Because it's loaded every single time, it must stay tiny (a few lines). It bakes in your "keep it simple / be concise" rule and the two Windows quirks so you never re-explain them.
 
 ---
 
-## 🔭 One slightly-bigger win (worth 20 min later)
-**A `dashboard-overview` skill** so Claude stops re-reading your repo structure every session (it has no index — it re-greps and re-reads files fresh each time). Put architecture + key dirs + conventions in `~/.claude/skills/dashboard-overview/SKILL.md`; it loads only when relevant. Biggest recurring saving for same-codebase work. *(Ask me to scaffold it.)*
+## 🔭 The dashboard-overview skill — what it is, basically
+
+**The problem it solves:** Claude Code has **no memory of your codebase between sessions and no index of it.** Every new session, when it needs to understand your project, it starts from scratch — running `grep`, listing folders, and **reading the same files again** to re-learn where things live. That re-exploration is one of your biggest hidden token costs on a repo you work in daily.
+
+**What the skill is:** just a small markdown file (`SKILL.md`) where you write down, once, the stuff Claude keeps rediscovering — "the backend is .NET 8 in `/backend`, port 5000; the frontend is React/Vite/PixiJS in `/frontend`, port 5173; state is Zustand; realtime is SignalR; here are the key folders and how they connect." You can also attach reference files (e.g. the full API route list) that load *only if* Claude actually needs them.
+
+**Why it saves tokens:** the skill sits dormant as a ~100-token line ("a description of the dashboard repo") until Claude needs it. When a task touches the codebase, Claude reads this one short file and instantly knows the layout — **instead of reading 8–10 files to figure it out again.** Same understanding, a fraction of the tokens, every session.
+
+**Think of it as:** a one-page "onboarding doc for the new dev" — except the new dev is Claude, every single session.
+
+👉 *Point me at the dashboard repo and I'll write this for you* — I'll read the actual structure and fill it in accurately.
 
 ---
 
@@ -85,9 +103,8 @@ Thinking tokens bill as the pricey **output** kind, default budget can be huge.
 
 ---
 
-### If you only do THREE things
-1. `/model` → **Sonnet** (and confirm Max subscription).
-2. `/clear` between tasks; `/mcp` → disable idle servers.
-3. `/pare-claude-md` + paste the one-line "keep it simple" rule.
+### If you only do TWO things
+1. `/model` → **Sonnet** (+ paste the `settings.json` so it sticks).
+2. `/pare-claude-md` + paste the one-line "keep it simple" rule into your CLAUDE.md.
 
-All three hit the dominant cost (model price + re-sent context) with first-party evidence behind them. Sources and the deeper detail are in this repo's other files (`cost-reduction-catalog-38-methods.md`, `local-setup-context-engineering.md`).
+Both hit the dominant cost (model price + re-sent context) with first-party evidence behind them. Deeper detail is in this repo's other files (`cost-reduction-catalog-38-methods.md`, `local-setup-context-engineering.md`).
