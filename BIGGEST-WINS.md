@@ -37,7 +37,6 @@ These two files live in your home folder and Claude Code reads them **automatica
 {
   "model": "sonnet",
   "outputStyle": "Concise",
-  "env": { "MAX_THINKING_TOKENS": "8000" },
   "permissions": {
     "allow": [
       "Bash(dotnet build:*)",
@@ -66,7 +65,6 @@ These two files live in your home folder and Claude Code reads them **automatica
 **What each line does:**
 - `"model": "sonnet"` → defaults every session to Sonnet instead of Opus (win #1, made permanent).
 - `"outputStyle": "Concise"` → tells Claude to keep replies short by default (less output = less cost). *If your version ignores this key, just run `/output-style` → Concise once.*
-- `"env": { "MAX_THINKING_TOKENS": "8000" }` → caps how much "thinking" Claude does per request (thinking is billed at the pricey output rate). 8000 is plenty for normal coding.
 - `"permissions": { "allow": [...] }` → **this is the "stop asking me permission" list.** Each entry auto-approves a safe command so Claude just runs it instead of pausing to ask. Result: fewer interruptions and fewer half-finished turns. I've listed only **safe, non-destructive** commands (build, test, lint, read-only git, `git add`). I deliberately left out anything risky (`git push`, `rm`, `git reset`) so those still ask first.
 - `"permissions": { "deny": [...] }` → blocks Claude from *reading* generated/vendor junk (bin, obj, node_modules, dist, minified, lockfiles). This is the real token saver here — Claude can't accidentally pour a 10,000-line lockfile into context.
 
