@@ -1,60 +1,64 @@
-# One-Paste Setup Prompt for Claude Code
+# One-Paste Setup Prompt for Claude Code (portable)
 
-**How to use:** open Claude Code **in your `claude-dashboard` repo root**, paste everything in the code block below, and send. It sets up all the proven cost wins, checks/install code-intelligence (LSP) for C#/Python/TypeScript, audits your MCPs for skill/CLI conversion, and wires output-filtering hooks — safely, with a plan and confirmation first.
+**How to use:** open Claude Code **in the root of the repo you want to optimise**, paste the whole code block below, and send. It **detects your environment** (OS, shell, git, package managers, languages, installed language servers, and whatever MCP servers you actually have) and applies the proven token/cost wins — safely, with a plan and confirmation first. Nothing is hard-coded to a specific machine, repo, or MCP set.
 
-> Tip: it changes global config and repo files. It will back things up and show a plan before writing. If anything needs `git`/admin it can't do, it will tell you instead of failing silently.
+> It changes global config and repo files, so it backs up what it overwrites and shows a plan before writing. It **verifies** each step and **reports** anything it can't do cleanly (missing binary, no git, OS quirk) instead of failing silently or pretending it worked.
 
 ---
 
 ```text
-You are setting up my Claude Code environment and this repo (a .NET 8 backend + React/Vite/PixiJS/Zustand/SignalR frontend dashboard on Windows) for maximum token/cost efficiency WITHOUT losing quality. Work in phases. Before writing anything, print a short PLAN of what you'll change and ask me to confirm. Back up any file you overwrite (copy to <file>.bak). On Windows, my git is at D:\Apps_Installers\Git (not on PATH) and `python3` is the broken Store stub — real Python 3.12 is at %LOCALAPPDATA%\Programs\Python\Python312 and the `py` launcher works. Skip and REPORT anything that can't be done cleanly rather than forcing it.
+You are setting up my current Claude Code environment and THIS repo for maximum token/cost efficiency WITHOUT losing quality. Discover everything — do not assume my OS, paths, languages, or MCP servers. Work in phases. Before writing anything, print a short PLAN and ask me to confirm. Back up any file you overwrite to <file>.bak. Verify each change; if something can't be done cleanly, SKIP it and REPORT why with manual steps — never claim success for something you didn't verify.
 
-PHASE 1 — settings.json (~/.claude/settings.json, merge, don't clobber):
-- Set "model": "sonnet" (default to Sonnet, not Opus).
-- Set "outputStyle": "Concise" (if unsupported on this version, run /output-style Concise instead and tell me).
-- Add permissions.allow for SAFE, non-destructive commands only: dotnet build/test, npm run build/test/lint, npm test, git status/diff/log/add. Do NOT auto-allow git push, rm, git reset, or anything destructive.
-- Add permissions.deny for Read on **/bin/**, **/obj/**, **/node_modules/**, **/dist/**, **/*.min.js, **/package-lock.json (stop wasting context on generated/vendor files).
+PHASE 0 — DETECT (report a short findings list, don't change anything yet):
+- OS + default shell; whether `git` is available (and if not, where it is / how to add it to PATH).
+- Package managers / runtimes present: npm/pnpm, dotnet, python/py/uv, go, cargo, etc.
+- This repo's stack: scan for project files (package.json, *.csproj/*.sln, pyproject.toml/requirements.txt, go.mod, Cargo.toml, etc.) and the main languages by file extension.
+- Build/test/lint commands for this repo (from package.json scripts, *.csproj, Makefile, etc.).
+- Natural module boundaries (e.g. separate sub-projects/workspaces) — note them for Phase 2.
+- Existing config: ~/.claude/settings.json, any CLAUDE.md files, ~/.claude/skills, .claude/commands.
 
-PHASE 2 — CLAUDE.md hierarchy (the big recurring saving):
-- Shrink ~/.claude/CLAUDE.md to ~5 universal lines: "Prefer the simplest working solution; no unrequested abstractions. Be concise. Code/errors verbatim." plus the two Windows quirks above.
-- In this repo: split context so it loads on demand. Keep root CLAUDE.md < 200 lines, DECISIONS NOT DESCRIPTIONS (delete anything a competent dev already knows). Create backend/CLAUDE.md and frontend/CLAUDE.md with area-specific rules ONLY (these load only when I work in that folder).
-- Add the line "Prefer the simplest working solution; no unrequested abstractions." to the root CLAUDE.md.
-- If a /pare-claude-md skill is available, use it on each CLAUDE.md; otherwise apply the same "obviousness" pruning yourself.
+PHASE 1 — settings.json (~/.claude/settings.json, MERGE, don't clobber):
+- "model": "sonnet" (default to Sonnet, not Opus).
+- "outputStyle": "Concise" (if the key is unsupported on this version, run /output-style Concise instead and tell me).
+- permissions.allow: ONLY the safe, non-destructive build/test/lint/read-only-git commands you actually detected for this repo (e.g. build, test, lint, git status/diff/log/add). NEVER auto-allow destructive commands (push, rm, reset, drop, deploy).
+- permissions.deny: Read on generated/vendor paths for THIS repo's stack (e.g. build output dirs, dependency dirs, minified files, lockfiles) so context isn't wasted on junk.
 
-PHASE 3 — dashboard-overview skill (stop re-reading my repo every session):
-- Read the repo structure (top-level dirs, entry points, how backend/frontend connect, key conventions, ports 5000/5173, start.ps1).
-- Create ~/.claude/skills/dashboard-overview/SKILL.md with a tight description ("Architecture & conventions for the claude-dashboard repo; use when navigating or modifying it") and a short body: stack, where things live, run commands, the real gotchas.
-- Put bulky reference (full API route list, DB schema, component map) in references/*.md files next to it (Tier 3 — load only when needed), not in the SKILL.md body.
+PHASE 2 — CLAUDE.md hierarchy (the big recurring saving — re-sent every session):
+- Shrink ~/.claude/CLAUDE.md to a few UNIVERSAL lines only (e.g. "Prefer the simplest working solution; no unrequested abstractions. Be concise. Keep code blocks and exact errors verbatim."). Add any genuinely machine-universal quirks you detected (e.g. tool not on PATH).
+- Root CLAUDE.md for this repo: keep < 200 lines, DECISIONS NOT DESCRIPTIONS — delete anything a competent engineer or capable AI already knows; keep only non-obvious, project-specific facts/gotchas/commands. Add the "Prefer the simplest working solution; no unrequested abstractions." line.
+- For each natural module boundary you found in Phase 0, create a subdirectory CLAUDE.md (e.g. <module>/CLAUDE.md) with that area's rules ONLY — these load on demand only when I work in that folder.
+- If a /pare-claude-md skill exists, use it on each CLAUDE.md; otherwise apply the same "obviousness" pruning yourself. NEVER remove validation, error-handling, security, or accessibility guidance — only the obvious.
 
-PHASE 4 — slash commands for my repetitive tasks (.claude/commands/ in this repo):
-- Create 3–5 reusable command templates that bake in our conventions so I never re-explain them. Suggested: /add-endpoint (backend controller+DTO+test pattern), /add-component (React component + Zustand store + our layout), /run-checks (dotnet build + npm run build, report failures only), /review-diff (review current git diff against our conventions, issues only). Use $ARGUMENTS/$1 for slots.
+PHASE 3 — project-overview skill (stop re-reading this repo every session; Claude has no codebase index):
+- Read the repo to learn its architecture, entry points, how modules connect, run commands, and the real conventions/gotchas.
+- Create ~/.claude/skills/<repo-name>-overview/SKILL.md with a tight description ("Architecture & conventions for the <repo-name> repo; use when navigating or modifying it") and a short body (stack, where things live, run commands, gotchas).
+- Put bulky reference (full route/endpoint list, schema, component/module map) in references/*.md next to it (loads only when needed), NOT in the SKILL.md body.
 
-PHASE 5 — code intelligence (LSP) for C#, Python, TypeScript (semantic nav instead of grep → far fewer file reads):
-- Detect which of C#/Python/TypeScript this repo uses (it's at least C# + TS).
-- Install the language-server BINARIES (Windows-aware):
-  - TypeScript: `npm install -g typescript-language-server typescript`
-  - Python: `npm install -g pyright` (node-based; point it at the Python312 interpreter via a pyrightconfig if needed — do NOT rely on `python3`).
-  - C#: `dotnet tool install -g csharp-ls` (I have .NET 8). If that fails, tell me and suggest the Roslyn/OmniSharp alternative.
-- Install the matching Claude Code LSP plugins via /plugin (Discover tab → search "lsp"): typescript, pyright/python, and C#. IMPORTANT: plugin install needs git on PATH and mine isn't — first add D:\Apps_Installers\Git\cmd to PATH for this to work (do it for the session and tell me how to make it permanent). If a plugin still can't install, REPORT it with the manual steps instead of failing.
-- Verify each LSP responds (e.g., a go-to-definition / type-check works) and report which languages are live.
+PHASE 4 — slash commands for repetitive tasks (.claude/commands/ in this repo):
+- Create 3–5 reusable command templates that bake in this repo's actual conventions/commands so I never re-explain them. Derive them from what the repo actually does (e.g. add a module/component/endpoint following the existing pattern; run-checks = build+test, report failures only; review-diff = review current git diff against our conventions, issues only). Use $ARGUMENTS/$1 for slots.
 
-PHASE 6 — MCP audit (convert what's convertible, trim the rest):
-- Run /mcp and /context to list my MCP servers (n8n, playwright, tends2, supabase, vapi) and what each costs in context.
-- For EACH, recommend one of: KEEP (live API, needed now), DISABLE-WHEN-UNUSED, PREFER-CLI, or WRAP-IN-SKILL — with a one-line reason. Apply this guidance:
-  - Live-action API/browser tools (tends2, vapi, n8n workflow ops, playwright) generally CANNOT become skills — keep them, but disable when not in use.
-  - supabase: prefer the Supabase CLI for routine ops (zero per-tool overhead). If the CLI isn't installed, tell me the install command.
-  - For any recurring multi-step MCP workflow I do often (e.g. tends2 client onboarding), create a SKILL that documents and sequences the steps ("skill wrapping MCP") so the methodology is a cheap on-demand skill and only the connectivity stays in MCP.
-- Implement only the safe changes (create the wrapper skills, note CLI swaps). Don't delete MCP servers — just recommend which to disable via /mcp and tell me.
+PHASE 5 — code intelligence (LSP) — CHECK before installing (semantic nav instead of grep = far fewer file reads):
+- For EACH main language you detected, check whether a language server is already installed and whether a matching Claude Code LSP plugin is available (run /plugin, Discover tab, search "lsp").
+- Install only the MISSING language-server binaries, using the right package manager for THIS machine, e.g.:
+  - TypeScript/JS → `npm install -g typescript-language-server typescript`
+  - Python → prefer the node-based `pyright` (`npm install -g pyright`) if `python3` isn't reliable; otherwise `pip install pyright`. Point it at the real interpreter if needed.
+  - C#/.NET → `dotnet tool install -g csharp-ls` (or Roslyn/OmniSharp if that fails).
+  - Other languages → the standard server (gopls, rust-analyzer, etc.).
+- Installing LSP PLUGINS via /plugin needs git on PATH. If git isn't on PATH, add it (or tell me exactly how) BEFORE installing plugins. If a plugin still can't install, REPORT it with manual steps rather than failing.
+- VERIFY each LSP actually responds (a go-to-definition / type-check works) and report which languages are live vs which need manual follow-up. Do not assume any language or server is present.
 
-PHASE 7 — offload verbose output to a hook (Windows-safe):
-- Add a PreToolUse(Bash) hook to ~/.claude/settings.json that filters test output to failures only (so a big test run returns hundreds of tokens, not thousands). Implement it so it runs through my Git bash (D:\Apps_Installers\Git\usr\bin\bash.exe) and degrades gracefully if the shell isn't found. Keep it minimal and non-blocking.
+PHASE 6 — MCP audit (discover what I actually have; convert what's convertible, trim the rest):
+- Run /mcp and /context to list MY configured MCP servers and what each costs in context. Do NOT assume any specific servers.
+- For EACH server, recommend one of: KEEP (live external system needed now), DISABLE-WHEN-UNUSED, PREFER-CLI (a CLI exists that's more context-efficient, e.g. gh, supabase, aws), or WRAP-IN-SKILL — with a one-line reason. Apply this rule of thumb: live API/DB/browser access generally must STAY as MCP (skills can't call live APIs); but a recurring multi-step workflow over an MCP can be captured as a SKILL that sequences it ("skill wrapping MCP"), and any server with a good CLI is cheaper as a CLI.
+- Implement only the SAFE changes: create the wrapper skills for recurring workflows, note CLI swaps and how to install the CLI. Do NOT delete MCP servers — tell me which to disable via /mcp and why.
+
+PHASE 7 — offload verbose output to a hook (OS/shell-aware):
+- Add a PreToolUse hook (matching the test/build runner you detected) that filters output to failures/errors only, so big runs return hundreds of tokens, not thousands. Use a shell that exists on THIS machine; make it non-blocking and degrade gracefully if the shell isn't found.
 
 PHASE 8 — verify & report:
-- Run /context before-and-after where possible and report the token delta from the changes.
-- Print a concise summary table: what changed, what was skipped (and why), and the 3 things I should do manually (e.g., make the git PATH change permanent, run /model Sonnet to confirm, disable idle MCP servers via /mcp).
-- Do NOT claim success for anything you didn't verify.
-
-Constraints: keep quality high — never remove validation, error handling, security, or accessibility guidance from CLAUDE.md; only remove the OBVIOUS. Prefer reversible changes. Show me the plan first.
+- Where possible, capture /context before-and-after and report the token delta.
+- Print a concise summary table: what changed, what was skipped (and why), which LSPs are live, the MCP recommendations, and the manual follow-ups I still need to do (e.g. make a PATH change permanent, confirm /model Sonnet, disable idle MCP servers via /mcp).
+- Keep quality high throughout; prefer reversible changes; show me the plan before writing.
 ```
 
 ---
@@ -64,20 +68,20 @@ Constraints: keep quality high — never remove validation, error handling, secu
 | Step | Why it saves (evidence) |
 |---|---|
 | Sonnet default + Concise + effort | Opus is priciest; Sonnet fine for most coding; routing studies ~40–80%. (Anthropic *Manage costs*.) |
-| permissions.deny (junk reads) | Stops Claude pouring lockfiles/node_modules into context — real token waste. (Anthropic.) |
-| permissions.allow (safe cmds) | Fewer permission interrupts/retried turns — mostly speed, some token. Use `/fewer-permission-prompts` to extend it. |
-| Tiered + pared CLAUDE.md | Re-sent every session; we measured pare = −72% / −580 tok/session; subdir files load only on demand. (Anthropic <200 lines.) |
-| dashboard-overview skill | Claude has **no codebase index** — it re-greps/re-reads every session; a skill loads ~100 tokens until needed vs reading 8–10 files. Progressive disclosure = up to **140×** vs upfront. |
+| permissions.deny (junk reads) | Stops Claude pouring lockfiles/deps into context — real token waste. |
+| permissions.allow (safe cmds) | Fewer permission interrupts/retried turns — mostly speed, some token. (`/fewer-permission-prompts` extends it.) |
+| Tiered + pared CLAUDE.md | Re-sent every session; pare measured −72% / −580 tok/session; subdir files load only on demand. (Anthropic <200 lines.) |
+| project-overview skill | Claude has **no codebase index** — it re-greps/re-reads every session; a skill loads ~100 tokens until needed. Progressive disclosure up to **140×** vs upfront. |
 | Slash commands | Repeated workflows measured **3,200 → 850 tokens/run**. |
-| **LSP / code intelligence** | Semantic nav ~**50ms vs 30–60s grep**, drastically **fewer file reads** (the dominant input cost). Anthropic ships TS/Python/C# LSP plugins. |
-| **MCP audit** | A 5-server MCP setup can cost ~**55k tokens**; skills are ~**30–50 tokens** on-demand. Native deferral helps, but disabling unused + CLI-over-MCP + skills-wrapping-MCP cuts more. |
-| Output-filter hook | Anthropic's pattern: 10k-line log → hundreds of tokens. (Native, Windows-safe version of what squeez couldn't do.) |
+| **LSP / code intelligence** | Semantic nav ~**50ms vs 30–60s grep** → drastically **fewer file reads** (the dominant input cost). Anthropic ships TS/Python/C# (and more) LSP plugins. |
+| **MCP audit** | A 5-server MCP setup can cost ~**55k tokens**; skills ~**30–50 tokens** on-demand. Native deferral helps; disable-unused + CLI-over-MCP + skills-wrapping-MCP cut more. |
+| Output-filter hook | Anthropic's pattern: 10k-line log → hundreds of tokens. |
 
-**Honest caveats baked into the prompt:** your `git`-not-on-PATH blocks plugin installs until fixed (the prompt adds it); `python3` is broken so Python LSP uses the node `pyright` binary; and your MCPs are live-action tools, so they mostly **can't** become skills — the gain is disable-when-unused + CLI + skill-wrapped workflows, not deletion.
+**Built-in honesty:** the prompt detects rather than assumes — it checks whether git, language servers, and CLIs exist before acting, audits *your* actual MCP servers, and reports anything it can't verify. Live-action MCP servers generally **can't** become skills; the gain there is disable-when-unused + CLI + skill-wrapped workflows.
 
 ### Sources
-- Anthropic LSP/code-intelligence plugins (TS/Python/C#) — https://claude.com/plugins/typescript-lsp · https://claude.com/plugins/pyright-lsp · https://github.com/Piebald-AI/claude-code-lsps ; LSP 50ms-vs-grep — https://zircote.com/blog/2025/12/lsp-tools-plugin-for-claude-code/ · https://www.amazingcto.com/lsp-in-claude/
-- Skills vs MCP (MCP ~55k vs skills 30–50 tok; "skills wrapping MCP"; MCP for connectivity, skills for methodology) — https://dev.to/jimquote/claude-skills-vs-mcp-complete-guide-to-token-efficient-ai-agent-architecture-4mkf · https://www.verdent.ai/guides/claude-skills-vs-mcp · https://claude.com/blog/extending-claude-capabilities-with-skills-mcp-servers
 - Anthropic *Manage costs* (model, hooks-filter, CLAUDE.md<200, CLI-over-MCP, subagents) — https://code.claude.com/docs/en/costs
+- LSP/code-intelligence plugins (TS/Python/C#+; 50ms-vs-grep) — https://claude.com/plugins/typescript-lsp · https://claude.com/plugins/pyright-lsp · https://github.com/Piebald-AI/claude-code-lsps · https://zircote.com/blog/2025/12/lsp-tools-plugin-for-claude-code/
+- Skills vs MCP (MCP ~55k vs skills 30–50 tok; "skills wrapping MCP"; MCP for connectivity, skills for methodology) — https://dev.to/jimquote/claude-skills-vs-mcp-complete-guide-to-token-efficient-ai-agent-architecture-4mkf · https://www.verdent.ai/guides/claude-skills-vs-mcp
 - Skills progressive disclosure / slash commands savings — https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview · https://code.claude.com/docs/en/slash-commands
 - Our measured results — `token-tools-report.md`, `local-setup-context-engineering.md` (this repo)
