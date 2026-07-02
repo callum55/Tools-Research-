@@ -1,51 +1,107 @@
-You are working in the `temporal-ui` repo, which builds a container FROM
-temporalio/ui and deploys it to GKE behind Istio. I need to add Okta SSO
-to the Temporal Web UI as a LOGIN GATE ONLY — the goal is simply to stop
-people outside our team from accessing the UI.
+# Task: Migrate "Concept-to-Code" from Claude Code to OpenAI Agents SDK + Temporal
 
-CRITICAL CONTEXT — do NOT do the following:
-- Do NOT use @okta/okta-react, @okta/okta-auth-js, <Security>, useOktaAuth,
-  LoginCallback, or PKCE. We do not own the Temporal UI's React tree.
-- The temporalio/ui image runs its own OIDC flow internally via the
-  ui-server `auth:` config. It is a CONFIDENTIAL client (authorization-code
-  flow with a client secret), NOT a public/PKCE SPA client.
-- Do NOT implement any authorization, RBAC, ClaimMapper, namespace
-  permissions, or token/claim transformation. Access control is handled
-  entirely by Okta app assignment (see below). Everyone who logs in is a
-  fully trusted user of the UI. This is login-only.
+## Paths (provided by user)
+- NEW_PROJECT_PATH: <path to empty folder — build everything here>
+- EXISTING_C2C_PATH: <path to existing Claude Code concept-to-code setup>
+- ENVIRONMENTS_ROOT: <path to "Concept to Code Environments" folder containing concepttocode-{N}-* checkouts>
 
-HOW ACCESS IS RESTRICTED:
-- The "only our team" restriction is enforced in Okta via app assignment,
-  NOT in Temporal. The Okta Web app is assigned only to our team's group,
-  so unassigned users cannot complete the OIDC flow. Temporal itself does
-  no filtering.
+## Hard rules
+1. EXISTING_C2C_PATH is READ-ONLY. Read it to extract prompts, skill rules,
+   the art-direction library, and generate-image.sh behaviour — never modify,
+   move, or delete anything in it. All new code goes in NEW_PROJECT_PATH.
+2. Replicate current behaviour exactly. Do not redesign the pipeline.
+3. Python project. Dependencies: openai-agents==0.11.3, temporalio (latest),
+   plus whatever you need for config/logging. Use a venv + pyproject.toml.
 
-WHAT TO IMPLEMENT:
-1. Configure Okta OIDC on the Temporal UI via TEMPORAL_AUTH_* environment
-   variables (not a baked-in docker.yaml). Vars needed:
-   TEMPORAL_AUTH_ENABLED=true, TEMPORAL_AUTH_TYPE=oidc,
-   TEMPORAL_AUTH_CLIENT_ID, TEMPORAL_AUTH_CLIENT_SECRET,
-   TEMPORAL_AUTH_PROVIDER_URL, TEMPORAL_AUTH_ISSUER_URL,
-   TEMPORAL_AUTH_SCOPES=openid,email,profile.
-2. Inject CLIENT_ID and CLIENT_SECRET from a Kubernetes Secret, never
-   hardcoded and never committed. Show the Secret manifest (placeholder
-   values) and the deployment env wiring / Helm values changes.
-3. The OIDC redirect/callback URI must be the EXTERNAL Istio host:
-   https://<ISTIO_HOST>/auth/sso_callback  (parameterise <ISTIO_HOST>).
-4. Pin the base image to a specific temporalio/ui version, not :latest.
+## Step 1 — Discovery (do this first)
+Read EXISTING_C2C_PATH and locate:
+- The /concept-to-code slash command definition and orchestrator skill rules
+- Subagent definitions: requirements-analyst, art-director, data-architect,
+  api-architect, frontend-architect, backend-dev, frontend-dev
+- generate-image.sh and the frontend-design art direction library
+- Any pipeline rules docs (branch naming, reconciliation rules, test matrix)
+Port each subagent's system prompt verbatim (adapt only tool references) into
+agent instruction files under NEW_PROJECT_PATH/prompts/.
 
-DELIVERABLES:
-- Updated Dockerfile (only if a change is actually needed — it may not be).
-- Kubernetes Secret manifest (placeholders).
-- Deployment/Helm values diff showing the env var wiring.
-- A short README section listing exactly what to create on the Okta side:
-  a "Web" (confidential) app integration, its sign-in redirect URI
-  (/auth/sso_callback on the Istio host), the grant type (authorization
-  code), scopes, and — importantly — that the app must be assigned ONLY to
-  our team's Okta group under Assignments.
+## Target architecture
 
-CONSTRAINTS:
-- Keep secrets out of the image and out of git.
-- Explain any assumption inline as a comment.
-- Login only — no RBAC. If you notice where server-side authorization would
-  go, leave a brief comment but do NOT implement it.
+### LLM access
+All agents call an internal OpenAI-compatible proxy:
+- base_url + api_key from env vars (OPENAI_BASE_URL, OPENAI_API_KEY)
+- Per-agent model assignment in a single config file (config.py or yaml):
+    requirements_analyst: gpt-5.4-nano
+    art_director:         gpt-5.4-nano
+    data_architect:       gpt-5.4-mini
+    api_architect:        gpt-5.4-mini
+    frontend_architect:   gpt-5.4-mini
+    backend_dev:          gpt-5.2-codex
+    frontend_dev:         gpt-5.2-codex
+    test_fix:             gpt-5.2-codex
+
+### Agents (OpenAI Agents SDK)
+One Agent per current subagent, same names/roles as above. Shared tools
+implemented as @function_tool:
+- read_file, write_file, edit_file, list_dir — path-sandboxed to the active
+  environment directory (reject any path outside it)
+- run_bash — shell execution, cwd = environment dir (used for git, dotnet
+  build, npm build, booting servers)
+- generate_image — wraps the existing generate-image.sh
+MCP: attach the currently configured MCP servers (gitlab, playwright,
+web-search etc.) via the Agents SDK MCP support (MCPServerStdio). Read the
+existing Claude Code MCP config (.mcp.json or claude config) at
+EXISTING_C2C_PATH to get the exact server commands, and reuse them.
+Playwright MCP is required by the test-fix agent (browser_navigate,
+browser_evaluate).
+
+### Temporal
+- Workflow: ConceptToCodeWorkflow(env_number: int, requirements_path: str)
+- One worker process, one task queue ("concept-to-code"). All activities run
+  on this worker (shared local filesystem is required).
+- Every agent invocation = one activity. Activities: max_attempts=1,
+  heartbeats, start_to_close_timeout 30–60 min for dev/test activities.
+- Workflow code is deterministic only: no I/O, no LLM calls, no filesystem.
+
+### Phase mapping (must match current behaviour)
+- Phase 0 (activity, no LLM): env setup. Inputs env number (1–8) + req path.
+  git fetch / git reset --hard / git checkout -b on BOTH repos (API + UI) in
+  ENVIRONMENTS_ROOT/concepttocode-{N}-*, shared branch
+  feat/BSSBAT-<YYYYMMDDHHMMSS> (GitLab pre-receive hook requires
+  <prefix>/<LETTERS>-<DIGITS>). Smoke-build both to validate templates.
+- Phase A: requirements_analyst. In: raw requirements doc. Out:
+  docs/normalized-spec.md, gaps filled autonomously with [ASSUMED] decisions.
+- Phase B (parallel activities): art_director runs FIRST as a pre-step, then
+  data_architect, api_architect, frontend_architect in parallel
+  (asyncio.gather over activity handles). Inputs: normalized-spec.md, Global
+  Art Direction Ledger, art-direction-library.md. Outputs:
+  docs/art-direction.md, docs/data-model.md, docs/api-contracts.md,
+  docs/frontend-architecture.md. Then a reconciliation loop (workflow-driven,
+  re-invoking architect agents) until all API permissions and routes match
+  frontend expectations.
+- Phase C+D (parallel activities): backend_dev + frontend_dev. Brief them to
+  EXTEND the existing .NET 8 / Next.js scaffolds (e.g. add to Program.cs,
+  DataSeeder.cs), never scaffold from scratch. Outputs: code diffs (models,
+  controllers, EF InMemory stores, React components, Tailwind configs) and
+  generated .png assets (heroes, avatars) in public/images/.
+- Phase E (workflow loop, max 5 cycles): test_fix agent activity. Boots
+  API/UI servers in background, runs validation matrix — Bash for builds,
+  Playwright MCP for UI validation, HTTP fetch for API testing. Errors feed
+  back into the next fix cycle. Exit early on green.
+- Phase G (activity, no LLM): git add -A, git commit, git push origin
+  <branch> on both repos. Never force-push. Do NOT create GitLab MRs.
+
+### Entry point
+CLI: python -m c2c.run <env-number> <path-to-requirements.md>
+- starts the workflow on the local Temporal server (localhost:7233)
+- separate command to run the worker: python -m c2c.worker
+- README with setup steps (venv, temporal server start-dev, env vars,
+  worker, run command)
+
+## Deliverables
+Working project in NEW_PROJECT_PATH: agents, tools, MCP wiring, Temporal
+workflow + activities + worker, ported prompts, config, README. Then do a
+dry-run explanation of one full pipeline execution tracing every activity.
+
+## Ask before assuming
+If anything in EXISTING_C2C_PATH is ambiguous (e.g. reconciliation loop exit
+criteria, smoke-build commands, generate-image.sh interface), ask the user
+rather than guessing.
