@@ -1,0 +1,51 @@
+You are working in the `temporal-ui` repo, which builds a container FROM
+temporalio/ui and deploys it to GKE behind Istio. I need to add Okta SSO
+to the Temporal Web UI as a LOGIN GATE ONLY — the goal is simply to stop
+people outside our team from accessing the UI.
+
+CRITICAL CONTEXT — do NOT do the following:
+- Do NOT use @okta/okta-react, @okta/okta-auth-js, <Security>, useOktaAuth,
+  LoginCallback, or PKCE. We do not own the Temporal UI's React tree.
+- The temporalio/ui image runs its own OIDC flow internally via the
+  ui-server `auth:` config. It is a CONFIDENTIAL client (authorization-code
+  flow with a client secret), NOT a public/PKCE SPA client.
+- Do NOT implement any authorization, RBAC, ClaimMapper, namespace
+  permissions, or token/claim transformation. Access control is handled
+  entirely by Okta app assignment (see below). Everyone who logs in is a
+  fully trusted user of the UI. This is login-only.
+
+HOW ACCESS IS RESTRICTED:
+- The "only our team" restriction is enforced in Okta via app assignment,
+  NOT in Temporal. The Okta Web app is assigned only to our team's group,
+  so unassigned users cannot complete the OIDC flow. Temporal itself does
+  no filtering.
+
+WHAT TO IMPLEMENT:
+1. Configure Okta OIDC on the Temporal UI via TEMPORAL_AUTH_* environment
+   variables (not a baked-in docker.yaml). Vars needed:
+   TEMPORAL_AUTH_ENABLED=true, TEMPORAL_AUTH_TYPE=oidc,
+   TEMPORAL_AUTH_CLIENT_ID, TEMPORAL_AUTH_CLIENT_SECRET,
+   TEMPORAL_AUTH_PROVIDER_URL, TEMPORAL_AUTH_ISSUER_URL,
+   TEMPORAL_AUTH_SCOPES=openid,email,profile.
+2. Inject CLIENT_ID and CLIENT_SECRET from a Kubernetes Secret, never
+   hardcoded and never committed. Show the Secret manifest (placeholder
+   values) and the deployment env wiring / Helm values changes.
+3. The OIDC redirect/callback URI must be the EXTERNAL Istio host:
+   https://<ISTIO_HOST>/auth/sso_callback  (parameterise <ISTIO_HOST>).
+4. Pin the base image to a specific temporalio/ui version, not :latest.
+
+DELIVERABLES:
+- Updated Dockerfile (only if a change is actually needed — it may not be).
+- Kubernetes Secret manifest (placeholders).
+- Deployment/Helm values diff showing the env var wiring.
+- A short README section listing exactly what to create on the Okta side:
+  a "Web" (confidential) app integration, its sign-in redirect URI
+  (/auth/sso_callback on the Istio host), the grant type (authorization
+  code), scopes, and — importantly — that the app must be assigned ONLY to
+  our team's Okta group under Assignments.
+
+CONSTRAINTS:
+- Keep secrets out of the image and out of git.
+- Explain any assumption inline as a comment.
+- Login only — no RBAC. If you notice where server-side authorization would
+  go, leave a brief comment but do NOT implement it.
