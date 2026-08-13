@@ -199,3 +199,34 @@ Capture and report:
 
 Repeat once with the same agent on variant: high for comparison.
 Report both.
+
+
+
+
+Implement a signature-moment round-trip modelled exactly on the
+existing permission round-trip (Phase E Step 1.5), which works
+because three independent sources must match and a grep proves it.
+
+1. art-director output contract: add a SIGNATURE ID field
+   (format SIG-01) alongside the existing SIGNATURE MOMENT prose.
+   The prose must already name a component and file path — keep
+   that requirement explicit.
+
+2. frontend-architect: must list the SIG ID in §8 Component
+   Inventory with the same component name and path. Under the
+   domain split, §8 lives in whichever file owns that component —
+   the index must record which.
+
+3. frontend-dev: the component must render its root element with
+   data-signature="SIG-01".
+
+4. visual-qa: new HARD FAIL check — assert the attribute exists
+   in the rendered DOM at the declared route, and screenshot it.
+   Not eligible for STRUCTURED DOWNGRADE.
+
+5. New reconciliation check g in Phase B Step 5: grep the SIG ID
+   in art-direction.md and in frontend-architecture (index or
+   domain file). Mismatch or absence re-spawns frontend-architect.
+
+Update SKILL.md, the agent files, and TECH_DOSSIER.md §4.4 and
+§5.1. Show me every diff.
