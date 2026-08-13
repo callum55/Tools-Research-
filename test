@@ -1,0 +1,115 @@
+Edit all 14 files in .opencode/agents/*.md. Add explicit
+temperature, max_tokens, and reasoning effort to each YAML
+frontmatter. Do not change model or permission blocks.
+
+max_tokens are runaway-detectors, not targets — the incremental
+write discipline (skeleton Write + one Edit per section) means
+no healthy call should approach these:
+- three architects, backend-dev, frontend-dev: temp 0.2, max_tokens 64000
+- requirements-analyst: temp 0.3, max_tokens 64000
+- backend-fixer, frontend-fixer: temp 0.2, max_tokens 16000
+- api-tester: temp 0.1, max_tokens 8000
+- ui-tester, visual-qa: keep variant: high, add max_tokens 8000
+- art-director: temp 0.7, max_tokens 4000
+
+Reasoning effort high for art-director, all three architects,
+and both fixers. Use whatever key the vertex-claude provider
+accepts for glm-5.2; if it rejects the key, report that rather
+than guessing.
+
+Print a table of every agent and its final settings.
+
+
+
+
+The pipeline was written for a 1M-token context. It now runs on
+256k in / 131k out. Large runs (30-40 features) risk crowding
+the window, especially the long-lived orchestrator session.
+
+1. Add a Phase A step: after writing traceability-manifest.md,
+   count features. If >12, group them into bounded domains
+   (e.g. Incidents, Risk Assessments, Training, Audits) and
+   record the grouping in a new ## Domains section of the
+   manifest.
+
+2. When domains exist, api-architect writes
+   docs/api-contracts-{domain}.md per domain plus a thin
+   docs/api-contracts-index.md listing domains, their files,
+   and shared conventions (versioning, ErrorEnvelope, auth,
+   pagination). Same split for frontend-architecture.md.
+   data-model.md stays single — it is the shared schema.
+
+3. backend-dev and frontend-dev read the index plus only the
+   domain files for the slice they are building, never all
+   domain files at once.
+
+4. Update reconciliation checks b-g and the Phase E testers to
+   iterate over domain files via the index rather than assuming
+   one file.
+
+5. Add to SKILL.md orchestrator rules: after each Phase E cycle,
+   write the consolidated failure list to docs/test-report.md
+   and re-read from that file on later cycles rather than
+   retaining full tester reports in session context.
+
+Keep the single-file path working unchanged when features <=12.
+Show me every diff and state how the ID scheme (API-F0N-0N)
+stays stable across the split.
+#
+
+
+
+
+
+
+
+
+
+Implement a signature-moment round-trip modelled exactly on the
+existing permission round-trip (Phase E Step 1.5), which works
+because three independent sources must match and a grep proves it.
+
+1. art-director output contract: add a SIGNATURE ID field
+   (format SIG-01) alongside the existing SIGNATURE MOMENT prose.
+   The moment must already name a component and file path — keep
+   that requirement explicit.
+
+2. frontend-architect: must list the SIG ID in §8 Component
+   Inventory with the same component name and path.
+
+3. frontend-dev: the component must render the root element with
+   data-signature="SIG-01".
+
+4. visual-qa: new HARD FAIL check — assert the attribute exists
+   in the rendered DOM at the declared route, and screenshot it.
+   Not eligible for STRUCTURED DOWNGRADE.
+
+5. New reconciliation check g in Phase B Step 5: grep the SIG ID
+   in art-direction.md and frontend-architecture.md §8. Mismatch
+   or absence re-spawns frontend-architect.
+
+Edit SKILL.md and the relevant agent files. Show me every diff.
+
+
+
+
+
+
+
+art-direction.md declares an ILLUSTRATION STYLE TOKEN that can
+ban raster on data surfaces. Nothing enforces it — a prior run
+shipped a stock clipart banner on a table page.
+
+Write scripts/validate-imagery.mjs:
+- Parse art-direction.md for whether raster is permitted, and on
+  which surfaces.
+- List every file in <ui-folder>/public/images/ (excluding
+  avatars/, which are explicitly permitted).
+- Cross-reference frontend-architecture.md §10b Visual Assets
+  Plan: every image file must appear there with a purpose and an
+  art-direction token.
+- Exit non-zero with a per-file reason on any unlisted image, or
+  any raster where the token bans it.
+
+Wire it as a blocking gate at Phase C+D exit, before Phase E.
+Print the script and the SKILL.md change.
