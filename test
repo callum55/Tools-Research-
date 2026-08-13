@@ -113,3 +113,41 @@ Write scripts/validate-imagery.mjs:
 
 Wire it as a blocking gate at Phase C+D exit, before Phase E.
 Print the script and the SKILL.md change.
+
+
+
+Two config changes, then verification. Report facts; do not
+guess where you cannot observe.
+
+CHANGE 1 — reasoning variant
+Confirm from ~/.config/opencode/opencode.json that a "max"
+variant exists for BOTH vertex-claude/glm-5.2 and
+azure-openai/gpt-5.6-*. Then set variant: max on every agent
+currently on variant: high. Leave temperature and maxTokens
+unchanged. If either provider has no max variant, leave those
+agents on high and say which.
+
+CHANGE 2 — visual-qa model tier
+Confirm azure-openai/gpt-5.6-terra is available on the
+azure-openai provider. If yes, change visual-qa only from
+gpt-5.6-luna to gpt-5.6-terra, keeping its other settings.
+Leave ui-tester and playwright-probe on luna. If terra is not
+available, change nothing and say so.
+
+VERIFY
+a) Check for a duplicate/competing reasoning key: some agents
+   may have both variant: max and a separate reasoning-effort
+   field in frontmatter. Report any agent with both.
+b) Run one trivial task through a glm-5.2 agent with
+   variant: max and capture the outbound request opencode
+   sends (verbose/debug logging or proxy access log). Confirm
+   whether reasoningEffort: "max" is actually present in the
+   payload. If you cannot observe the payload, say so plainly
+   rather than inferring from config.
+c) Search opencode.json, the vertex-claude proxy config, and
+   all agent files for ANY timeout setting. Report the exact
+   values found, or state that none exist.
+d) Note wall-clock duration of the test task in (b).
+
+Print the final 16-agent table: agent, model, temperature,
+maxTokens, variant.
