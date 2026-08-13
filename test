@@ -230,3 +230,33 @@ because three independent sources must match and a grep proves it.
 
 Update SKILL.md, the agent files, and TECH_DOSSIER.md §4.4 and
 §5.1. Show me every diff.
+
+
+
+
+art-direction.md declares an ILLUSTRATION STYLE TOKEN that can
+ban raster on specific surfaces. Nothing enforces it — a prior
+run (env 4, Editorial Precision, medium = editorial line-art /
+fine engraving, "never raster") shipped a full-bleed stock
+clipart banner on a data table page.
+
+Write scripts/validate-imagery.mjs:
+- Parse art-direction.md for the ILLUSTRATION STYLE TOKEN and
+  IMAGERY INTENSITY: whether raster is permitted, and on which
+  surfaces it is banned.
+- List every file in <ui-folder>/public/images/, excluding
+  avatars/ (per-user photoreal avatars are explicitly permitted
+  by the contract).
+- Cross-reference frontend-architecture §10b Visual Assets Plan:
+  every image file must appear there with a filename, purpose,
+  art-direction token, dimensions, and alt text. Under the domain
+  split, resolve §10b via the index.
+- Exit non-zero with a per-file reason for: any image not listed
+  in §10b, or any raster file where the token bans raster.
+
+Wire it as a blocking gate at Phase C+D exit, before Phase E —
+same pattern as the traceability validator at Phase A exit.
+Update SKILL.md, TECH_DOSSIER.md §5.1 gate inventory, and add
+it to §6.3 validation coverage.
+
+Print the script and every diff.
