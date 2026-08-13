@@ -151,3 +151,28 @@ d) Note wall-clock duration of the test task in (b).
 
 Print the final 16-agent table: agent, model, temperature,
 maxTokens, variant.
+
+
+
+
+Three fixes:
+
+1. Five agents show "–" in the variant column: api-tester,
+   backend-dev, build-verifier, frontend-dev,
+   requirements-analyst. Set variant: max on backend-dev,
+   frontend-dev, and requirements-analyst. Leave api-tester and
+   build-verifier without a variant (short deterministic
+   outputs, no benefit).
+
+2. The earlier run reported 16 agents; this table shows 14.
+   List every file in .opencode/agents/ and confirm none were
+   lost or overwritten. Report the true count.
+
+3. instructions.md line 35 documents a ~5-min SSE idle timeout
+   on the GCP load balancer. Quote that line verbatim and state
+   whether it describes idle time between streamed tokens or
+   total request duration. Then check whether opencode retries
+   or fails on SSE disconnect, and what the pipeline's Subagent
+   Reliability Protocol does with that failure.
+
+Print the corrected table with a row per agent file found.
