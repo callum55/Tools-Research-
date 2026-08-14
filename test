@@ -1,27 +1,18 @@
-Close the §6.4 gap: no machine check that manifest IDs are
-actually implemented.
+Agents are no longer loadable in opencode. Diagnose without
+changing anything yet.
 
-1. backend-dev writes docs/coverage-backend.md at end of phase:
-   every API-F0N-0N and DTO-F0N-0N from the manifest mapped to
-   file:line where it is implemented. frontend-dev writes
-   docs/coverage-frontend.md: every UI-F0N-0N mapped to
-   file:line. Under the domain split, each dev covers only the
-   IDs in its slice; the orchestrator merges.
+1. Run: opencode debug config — report any parse or validation
+   errors.
+2. Run: opencode debug agent <name> for api-architect,
+   frontend-dev, and visual-qa. Report output or error for each.
+3. Print the raw YAML frontmatter (from opening --- to closing
+   ---) of all 14 .opencode/agents/*.md files, verbatim.
+4. Check each for: missing or duplicated --- delimiters, keys
+   added inside the markdown body instead of frontmatter,
+   inconsistent key naming (maxTokens vs max_tokens vs
+   max_tokens), tabs instead of spaces, and any key opencode
+   does not recognise.
+5. Check the opencode log at ~/.local/share/opencode/log/
+   for load errors since the edits started today.
 
-2. Write scripts/validate-coverage.mjs:
-   - Read traceability-manifest.md for the full ID set.
-   - Read both coverage files.
-   - Fail non-zero listing every manifest ID with no mapping,
-     and every mapping pointing at a file:line that does not
-     exist on disk.
-
-3. Wire as a blocking gate at Phase C+D exit alongside
-   validate-imagery.mjs. Failure routes to the relevant dev
-   with the unmapped IDs named, not a generic re-spawn.
-
-4. Also assert in Phase E: every TEST-F0N-0N in the manifest
-   appears in the api-tester or ui-tester report. Missing test
-   coverage is a Phase E failure, not a silent pass.
-
-Update SKILL.md, both dev agent files, TECH_DOSSIER.md §5.1
-and §6.3/§6.4. Print the script and every diff.
+Report findings. Do not edit yet.
