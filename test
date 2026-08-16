@@ -1,44 +1,68 @@
-Repo: C:\Users\callumLindsey\Documents\Claude Code\claude-concept-to-code
-Target: env 5 (FinFlow). A prior run reached Phase E Step 2 and
-was killed during Step 3. The build exists. Do NOT re-run Phases
-A-D. Do NOT modify src/.
+Repo: claude-concept-to-code. READ-ONLY. Produce a proposal.
+Change no files. I approve before any edit.
 
-STEP 0 — before anything else
-Diff .opencode/agents/ against .claude/agents/. Report whether
-they are identical in substance (ignoring the provider-prefix
-difference on line 4). If they differ in any other way, STOP and
-report the differences. Also state which directory OpenCode
-actually loads agent definitions from, and how you determined it.
+CONTEXT
+Generated UIs converge on a sterile look: grey-on-white, hairline
+borders, no illustration, no KPI band, no charts, flat nav. Two
+runs, different requirements docs, near-identical output. All
+gates passed.
 
-STEP 1 — resume Phase E from Step 3
-Run in order: ui-tester (Step 3), visual-qa (Step 4),
-design-critic (Step 7).
-Before spawning each, state its model, variant, temperature and
-top_p as they will actually be sent.
+Every gate we have is SUBTRACTIVE. We have a filter and no floor.
 
-After each agent, report:
- - spawned? completed? wrote its report file to disk?
- - Playwright calls, split by navigation / DOM assertion /
-   screenshot capture / interaction
- - screenshots captured vs screenshots actually sent to a model
- - the agent's quality findings, verbatim
+Three independent projects converged on the same three dials:
+ - github.com/nextlevelbuilder/ui-ux-pro-max-skill (variance /
+   motion / density, 1-10, offline Python search over 192 palettes,
+   84 styles, 74 font pairings; supports OpenCode)
+ - github.com/Leonxlnx/taste-skill (DESIGN_VARIANCE /
+   MOTION_INTENSITY / VISUAL_DENSITY, 1-10)
+ - github.com/miqdadbadjuber/anti-slop (ENERGY / RHYTHM / MOTION, 1-3)
+Our anti-repeat gate measures HSL hue. None of them measure hue.
 
-STEP 2 — probe
-Independently of the agents, confirm these three defects exist
-in the running build, then report whether ANY agent flagged them:
- 1. Dashboard subtitle renders "Your operations overview for ."
-    — empty interpolated value
- 2. /vena Implemented column renders "1 Jan 1970" on
-    CON-2026-00003, NOM-2026-00006, DIM-2026-00003
- 3. Every row in /escalations has requester "Sarah Whitfield"
+Anthropic's frontend-design skill names three looks AI defaults to.
+Two match our library worlds: near-black + single bright accent
+(= Technical Blueprint), and broadsheet with hairline rules and
+zero radius (= Editorial Precision).
 
-For each one an agent missed, name the checklist item that
-should have caught it and classify it as: absent /
-present-but-conformance-only / present-and-missed.
+PART 1 - AUDIT OURS
+1.1 For each gate (validate-imagery, validate-coverage, anti-repeat,
+    reconciliation a-m, visual-qa checklist, design-critic rubric):
+    classify every check SUBTRACTIVE or ADDITIVE. Give the ratio.
+1.2 Trace the logic and answer: can a UI with zero illustrations,
+    zero charts, no KPI band and flat nav pass every current gate?
+    If yes, quote the gates it passes.
+1.3 List every world in art-direction-library.md with its own
+    description. Mark any matching the three named AI defaults.
+1.4 Do we record density, layout variance, or motion intensity
+    ANYWHERE as a measured value? Quote it or state absent.
 
-STEP 3
-Write docs/test-report.md from the API testing cycle
-(78 pass / 14 fail / 3 blocked) if those results are still
-recoverable. If not, say so.
+PART 2 - EVALUATE THEIRS (fetch the actual repos)
+2.1 ui-ux-pro-max: verify offline operation (no network calls),
+    Python version needed, and what --design-system --persist
+    actually emits. Compare its MASTER.md shape against our
+    art-direction.md schema. Could it replace or feed our library?
+    State integration cost honestly.
+2.2 taste-skill: extract its dashboard-hardening and anti-center-bias
+    rules verbatim. Are they expressible as deterministic checks
+    against our rendered DOM?
+2.3 For each of the three, list what is landing-page-specific and
+    therefore noise for an internal B2B console. Be blunt.
 
-Report only. Change nothing except test-report.md.
+PART 3 - PROPOSE
+3.1 Three-dial schema for our art-direction output: field names,
+    ranges, where declared, which agent verifies each, and the
+    exact check. Follow the SIG-01 round-trip pattern.
+3.2 Positive floors for validate-imagery.mjs: minimum asset count
+    and mandated placement. Show the exit-gate logic.
+3.3 The 2-3 conditional structural rules worth transplanting,
+    rewritten for a data-dense admin console at DENSITY 8.
+3.4 Verdict on ui-ux-pro-max: adopt wholesale / harvest data only /
+    ignore. Commit to one, with reasoning and cost.
+3.5 What to do with Editorial Precision and Technical Blueprint.
+
+PART 4 - SEQUENCE
+Order the changes by (impact / effort), state dependencies, and
+name the ONE change to make first. For each, give the cheapest
+experiment that proves it worked.
+
+Cite file:line for ours, URL for theirs. Mark anything unverified.
+Do not propose fixes you cannot ground in evidence.
