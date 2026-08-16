@@ -1,22 +1,25 @@
-Implement step 1 only: record the three dials in art-direction.md.
+Three items, in order.
 
-DESIGN_VARIANCE / MOTION_INTENSITY / VISUAL_DENSITY, integers 1-10,
-in the Output Contract at art-direction-library.md:51-86, emitted by
-art-director.md, verified present by reconciliation check f.
+1. Extend the domain floor. Currently only VISUAL_DENSITY is clamped
+   for B2B/admin/finance. DESIGN_VARIANCE and MOTION_INTENSITY_DIAL
+   are freely chosen, and their gates (>= 6 and >= 4) can be dodged
+   by declaring 5 and 3. Add floors so those gates cannot be
+   switched off by the agent they constrain. Propose the values
+   before writing them.
 
-ADDITION not in the proposal: the art-director must NOT freely choose
-these. Add a domain floor to art-director.md — for B2B / admin /
-finance / operations domains, VISUAL_DENSITY must be >= 7 and a lower
-value is a BLOCKER. State how you are implementing the floor before
-you write it.
+2. Restore the always-required assets in validate-imagery.mjs:
+   1 login/hero, 1 empty-state, 1 error-page illustration, required
+   regardless of declared IMAGERY INTENSITY. As written, declaring
+   "restrained-but-present" exempts a project from the floor
+   entirely. Keep the 3/5/8 tiering above it.
 
-Separately, in design-critic.md, change the fix-cycle trigger from
-score <= 2 to score < 4, and reword the rubric so that 3 reads as a
-FAILING grade rather than "adequate". Show me the current wording
-before you change it.
+3. Then run the round-trip. Add DESIGN_VARIANCE: 8,
+   MOTION_INTENSITY_DIAL: 5, VISUAL_DENSITY: 8 to one existing
+   art-direction.md by hand. Run the pipeline. Report:
+     - does frontend-architect carry all three into §10 verbatim
+     - does frontend-dev render data-density / data-variance on root
+     - can visual-qa read them back from the DOM
+     - does reconciliation check f actually fail if a dial is absent
+   Test the failure path, not just the happy path.
 
-Then: add the three dials to one existing art-direction.md by hand,
-run the pipeline, and report whether frontend-architect carries them
-into §10 and whether visual-qa can read them back.
-
-Show diffs. Do not commit.
+Show all diffs. Commit only after the round-trip passes.
