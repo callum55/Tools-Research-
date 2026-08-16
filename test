@@ -1,18 +1,83 @@
-Agents are no longer loadable in opencode. Diagnose without
-changing anything yet.
+ROLE: Pipeline forensics. READ-ONLY. Make no edits, no commits, no fixes.
+Produce a report. If you are tempted to fix something, record it as a finding instead.
 
-1. Run: opencode debug config — report any parse or validation
-   errors.
-2. Run: opencode debug agent <name> for api-architect,
-   frontend-dev, and visual-qa. Report output or error for each.
-3. Print the raw YAML frontmatter (from opening --- to closing
-   ---) of all 14 .opencode/agents/*.md files, verbatim.
-4. Check each for: missing or duplicated --- delimiters, keys
-   added inside the markdown body instead of frontmatter,
-   inconsistent key naming (maxTokens vs max_tokens vs
-   max_tokens), tabs instead of spaces, and any key opencode
-   does not recognise.
-5. Check the opencode log at ~/.local/share/opencode/log/
-   for load errors since the edits started today.
+CONTEXT
+A Concept-to-Code run was killed mid-flight during the UI testing phase.
+The prior run used a DIFFERENT requirements document but produced a
+visually near-identical UI. Commit 3feb44c added anti-repeat, design critique,
+and quality-judgement machinery. It is UNKNOWN whether any of it executed.
 
-Report findings. Do not edit yet.
+For every finding: cite file:line, artifact path, or event-history ID.
+Any claim you cannot ground in an artifact, mark UNVERIFIED. Do not infer
+that a gate ran because it exists in config.
+
+== PART 1: RUN STATE ==
+1.1 Which phases completed, which was in flight at kill, which never started.
+1.2 List every artifact produced, with path and byte size. Flag zero-byte or
+    truncated outputs.
+1.3 Distinguish artifacts missing because of the kill from artifacts missing
+    that should have existed by the phase reached. The second category is a finding.
+
+== PART 2: DID 3feb44c ACTUALLY RUN ==
+For EACH component below, state one of: EXECUTED+PASSED / EXECUTED+FAILED /
+EXECUTED+SILENTLY-DEGRADED / NEVER-INVOKED / CANNOT-DETERMINE. Cite evidence.
+  a) design critique loop — how many cycles ran, what changed between cycles,
+     what triggered exit (convergence or cycle cap)
+  b) layout archetype conformance check
+  c) reference layout exemplar selection — which exemplar, which world
+  d) HSL hue-distance anti-repeat vs last 3 ledger entries — actual distances
+  e) validate-imagery.mjs
+  f) validate-coverage.mjs — unmapped manifest IDs
+  g) signature moment round-trip (SIG-01 -> §8 -> data-signature)
+  h) required component states incl. focus-indicator hard fail
+  i) page copy specificity gates
+  j) motion inventory §12b
+  k) all 13 reconciliation checks (a-m) — list each with pass/fail
+If a gate passed, quote the actual measured value, not the verdict.
+A gate that passes without a recorded measurement is a finding.
+
+== PART 3: THE REPEAT PROBLEM (priority) ==
+3.1 Read the anti-repeat ledger. Dump the last 4 entries in full.
+3.2 For this run vs the immediately previous run, produce a side-by-side of:
+    art-direction world, layout archetype, reference exemplar ID, type scale,
+    spacing scale, component inventory (§8), page structure, navigation pattern,
+    colour tokens.
+3.3 State plainly which of those differ and which are identical.
+3.4 KEY QUESTION: is the anti-repeat gate measuring any axis on which these two
+    runs actually differ? If the gate checks only hue and hue is the only thing
+    that changed, say so explicitly.
+3.5 Trace how the two different requirements documents mapped to world selection.
+    Quote the selection logic. If distinct inputs deterministically converge on
+    one world, identify the collapsing step.
+
+== PART 4: VISUAL QA / PLAYWRIGHT ==
+4.1 Total Playwright calls, and the breakdown by kind: navigation, DOM assertion,
+    screenshot capture, interaction, wait/poll, other.
+4.2 How many screenshots were actually captured, and how many were passed into a
+    model for judgement? Screenshots captured but never judged is a finding.
+4.3 For each visual-QA assertion, classify as CONFORMANCE (checks declared tokens
+    were applied) or QUALITY (judges whether the result is good). Give the ratio.
+4.4 Quote every quality judgement the agent produced verbatim. If there are none,
+    state that.
+4.5 Did the batched spawn architecture hold, or was there context pressure /
+    silent truncation? Any HTTP 400s or dropped batches.
+
+== PART 5: MODEL + PARAMETER AUDIT ==
+5.1 Table every agent in .opencode/agents/*.md: model, variant, temperature,
+    top_p, max_tokens, and whether each is explicit or provider-default.
+5.2 Flag any agent still on provider defaults.
+5.3 Specifically report the art-direction agent and the visual-QA agent configs.
+5.4 Note any agent whose max_tokens ceiling was actually hit this run.
+
+== PART 6: OUTPUT ==
+A) Run state — one paragraph.
+B) Gate execution table (Part 2), one row per component.
+C) Repeat-problem verdict: is this a gate-not-running problem, a
+   gate-too-weak problem, or an upstream-input-collapse problem? Commit to one
+   as primary, with evidence. Say what would falsify your answer.
+D) Visual QA verdict: is it judging quality or checking conformance?
+E) Ranked findings, most-causal first. For each: evidence, and the single
+   cheapest experiment that would confirm or kill it.
+F) Everything you could not determine and what artifact you'd need.
+
+Do not propose fixes. Diagnosis only.
