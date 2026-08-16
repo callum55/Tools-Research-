@@ -1,83 +1,44 @@
-ROLE: Pipeline forensics. READ-ONLY. Make no edits, no commits, no fixes.
-Produce a report. If you are tempted to fix something, record it as a finding instead.
+Repo: C:\Users\callumLindsey\Documents\Claude Code\claude-concept-to-code
+Target: env 5 (FinFlow). A prior run reached Phase E Step 2 and
+was killed during Step 3. The build exists. Do NOT re-run Phases
+A-D. Do NOT modify src/.
 
-CONTEXT
-A Concept-to-Code run was killed mid-flight during the UI testing phase.
-The prior run used a DIFFERENT requirements document but produced a
-visually near-identical UI. Commit 3feb44c added anti-repeat, design critique,
-and quality-judgement machinery. It is UNKNOWN whether any of it executed.
+STEP 0 — before anything else
+Diff .opencode/agents/ against .claude/agents/. Report whether
+they are identical in substance (ignoring the provider-prefix
+difference on line 4). If they differ in any other way, STOP and
+report the differences. Also state which directory OpenCode
+actually loads agent definitions from, and how you determined it.
 
-For every finding: cite file:line, artifact path, or event-history ID.
-Any claim you cannot ground in an artifact, mark UNVERIFIED. Do not infer
-that a gate ran because it exists in config.
+STEP 1 — resume Phase E from Step 3
+Run in order: ui-tester (Step 3), visual-qa (Step 4),
+design-critic (Step 7).
+Before spawning each, state its model, variant, temperature and
+top_p as they will actually be sent.
 
-== PART 1: RUN STATE ==
-1.1 Which phases completed, which was in flight at kill, which never started.
-1.2 List every artifact produced, with path and byte size. Flag zero-byte or
-    truncated outputs.
-1.3 Distinguish artifacts missing because of the kill from artifacts missing
-    that should have existed by the phase reached. The second category is a finding.
+After each agent, report:
+ - spawned? completed? wrote its report file to disk?
+ - Playwright calls, split by navigation / DOM assertion /
+   screenshot capture / interaction
+ - screenshots captured vs screenshots actually sent to a model
+ - the agent's quality findings, verbatim
 
-== PART 2: DID 3feb44c ACTUALLY RUN ==
-For EACH component below, state one of: EXECUTED+PASSED / EXECUTED+FAILED /
-EXECUTED+SILENTLY-DEGRADED / NEVER-INVOKED / CANNOT-DETERMINE. Cite evidence.
-  a) design critique loop — how many cycles ran, what changed between cycles,
-     what triggered exit (convergence or cycle cap)
-  b) layout archetype conformance check
-  c) reference layout exemplar selection — which exemplar, which world
-  d) HSL hue-distance anti-repeat vs last 3 ledger entries — actual distances
-  e) validate-imagery.mjs
-  f) validate-coverage.mjs — unmapped manifest IDs
-  g) signature moment round-trip (SIG-01 -> §8 -> data-signature)
-  h) required component states incl. focus-indicator hard fail
-  i) page copy specificity gates
-  j) motion inventory §12b
-  k) all 13 reconciliation checks (a-m) — list each with pass/fail
-If a gate passed, quote the actual measured value, not the verdict.
-A gate that passes without a recorded measurement is a finding.
+STEP 2 — probe
+Independently of the agents, confirm these three defects exist
+in the running build, then report whether ANY agent flagged them:
+ 1. Dashboard subtitle renders "Your operations overview for ."
+    — empty interpolated value
+ 2. /vena Implemented column renders "1 Jan 1970" on
+    CON-2026-00003, NOM-2026-00006, DIM-2026-00003
+ 3. Every row in /escalations has requester "Sarah Whitfield"
 
-== PART 3: THE REPEAT PROBLEM (priority) ==
-3.1 Read the anti-repeat ledger. Dump the last 4 entries in full.
-3.2 For this run vs the immediately previous run, produce a side-by-side of:
-    art-direction world, layout archetype, reference exemplar ID, type scale,
-    spacing scale, component inventory (§8), page structure, navigation pattern,
-    colour tokens.
-3.3 State plainly which of those differ and which are identical.
-3.4 KEY QUESTION: is the anti-repeat gate measuring any axis on which these two
-    runs actually differ? If the gate checks only hue and hue is the only thing
-    that changed, say so explicitly.
-3.5 Trace how the two different requirements documents mapped to world selection.
-    Quote the selection logic. If distinct inputs deterministically converge on
-    one world, identify the collapsing step.
+For each one an agent missed, name the checklist item that
+should have caught it and classify it as: absent /
+present-but-conformance-only / present-and-missed.
 
-== PART 4: VISUAL QA / PLAYWRIGHT ==
-4.1 Total Playwright calls, and the breakdown by kind: navigation, DOM assertion,
-    screenshot capture, interaction, wait/poll, other.
-4.2 How many screenshots were actually captured, and how many were passed into a
-    model for judgement? Screenshots captured but never judged is a finding.
-4.3 For each visual-QA assertion, classify as CONFORMANCE (checks declared tokens
-    were applied) or QUALITY (judges whether the result is good). Give the ratio.
-4.4 Quote every quality judgement the agent produced verbatim. If there are none,
-    state that.
-4.5 Did the batched spawn architecture hold, or was there context pressure /
-    silent truncation? Any HTTP 400s or dropped batches.
+STEP 3
+Write docs/test-report.md from the API testing cycle
+(78 pass / 14 fail / 3 blocked) if those results are still
+recoverable. If not, say so.
 
-== PART 5: MODEL + PARAMETER AUDIT ==
-5.1 Table every agent in .opencode/agents/*.md: model, variant, temperature,
-    top_p, max_tokens, and whether each is explicit or provider-default.
-5.2 Flag any agent still on provider defaults.
-5.3 Specifically report the art-direction agent and the visual-QA agent configs.
-5.4 Note any agent whose max_tokens ceiling was actually hit this run.
-
-== PART 6: OUTPUT ==
-A) Run state — one paragraph.
-B) Gate execution table (Part 2), one row per component.
-C) Repeat-problem verdict: is this a gate-not-running problem, a
-   gate-too-weak problem, or an upstream-input-collapse problem? Commit to one
-   as primary, with evidence. Say what would falsify your answer.
-D) Visual QA verdict: is it judging quality or checking conformance?
-E) Ranked findings, most-causal first. For each: evidence, and the single
-   cheapest experiment that would confirm or kill it.
-F) Everything you could not determine and what artifact you'd need.
-
-Do not propose fixes. Diagnosis only.
+Report only. Change nothing except test-report.md.
