@@ -1,28 +1,64 @@
-Single task. Do not run Phase E. Do not spawn ui-tester or visual-qa.
-Change no files except the report design-critic writes.
+Read-only forensic review of the last end-to-end run.
+Change no files. Do not re-run any phase. Do not spawn any agent.
+Every answer must cite a file path, file:line, or log excerpt.
+If something cannot be evidenced from disk, say "no evidence on disk"
+rather than inferring it.
 
-Spawn ONE agent: design-critic (.opencode/agents/design-critic.md)
-against the existing env 5 FinFlow build.
+1. RUN SHAPE
+   - Which env, which requirements doc, run start and end timestamps.
+   - Per phase (A-E): completed / failed / killed, wall-clock duration,
+     and the agents actually spawned in each.
+   - For any agent that did not complete: its last tool call, last log
+     line, and the elapsed time before it stopped.
 
-Before spawning, state the model, variant, temperature, top_p and
-maxTokens as they will actually be sent.
+2. MODEL CONFIG AS SENT
+   For every agent that ran, state model, reasoning variant,
+   temperature, top_p, maxTokens as actually sent (not as documented).
+   Flag any mismatch against the agent's .opencode/agents/*.md file.
 
-Routes to score: / (dashboard), /escalations, /vena, /login
+3. LUNA AGENTS
+   - Did ui-tester, visual-qa, playwright-probe, design-critic each
+     spawn? Complete? Write their report files? Give paths.
+   - For visual-qa: screenshots captured vs screenshots actually sent
+     to the model, per batch. Any HTTP 400s or timeouts, verbatim.
 
-Report:
- - did it spawn, complete, and write its report file
- - scores per route per category, verbatim
- - its written justification, verbatim
- - screenshots captured vs screenshots actually sent to the model
+4. DESIGN-CRITIC
+   - Report file path. Scores per route per category, verbatim.
+   - Its written justification, verbatim.
+   - Under the current rubric (fix triggers below 4), pass or fail?
+   - Did the fix cycle trigger? How many cycles, and what changed?
 
-Then answer directly:
- 1. Did it flag the dashboard subtitle rendering
-    "Your operations overview for ." with an empty value?
- 2. Did it flag "1 Jan 1970" in the /vena Implemented column?
- 3. Did it flag that the dashboard's only content is an empty state?
- 4. Did it flag the absence of any illustration, chart or KPI band?
- 5. Under the current rubric (3 = failing, fix triggers below 4),
-    does this build pass or fail?
+5. GATES FROM 398ba85
+   For each gate, state: did it execute, what did it return, evidence.
+   - VISUAL_DENSITY >= 7 domain floor
+   - DESIGN_VARIANCE and MOTION_INTENSITY (floors absent - what values
+     were declared, and were they checked at all?)
+   - imagery minimums
+   - KPI band and tabular-nums checks
+   - signature-moment round-trip: SIG-01 in art-direction ->
+     listed in §8 with route -> data-signature present in built DOM.
+     Grep the built output, not the docs.
+   If a gate lives inside an agent that did not complete, say so
+   explicitly and mark it INERT.
 
-If it hangs or does not return within 10 minutes: kill it, and report
-exactly where it stopped and what its last tool call was.
+6. ART DIRECTION
+   - World selected, and the last 3 ledger entries.
+   - Anti-repeat gate: what distance did it compute, against what,
+     and did it pass?
+   - The three dial values declared in art-direction.md §10.
+   - Reference layout for the selected world vs what was built:
+     list each element the reference specifies and whether it exists
+     in the DOM.
+
+7. VALIDATORS
+   Run validate-imagery.mjs --self-test, validate-coverage.mjs and
+   validate-traceability.mjs against this build. Exit codes and
+   output verbatim. Note known false positives rather than fixing.
+
+8. DRIFT
+   - Diff .claude/agents/ against .opencode/agents/: which files
+     differ, and did the run read from the stale copies?
+
+Finish with a numbered list of every failure found, ordered by
+whether it is infrastructure (agent didn't run) or design (agent ran
+and produced bad output). Do not propose fixes.
