@@ -1,64 +1,59 @@
-Read-only forensic review of the last end-to-end run.
-Change no files. Do not re-run any phase. Do not spawn any agent.
-Every answer must cite a file path, file:line, or log excerpt.
-If something cannot be evidenced from disk, say "no evidence on disk"
-rather than inferring it.
+Diagnostic only. Do not run any phase. Do not build anything.
+Change no files except where step 6 says otherwise.
+Report raw output for every step, including full error text and
+stack traces. Do not summarise errors.
 
-1. RUN SHAPE
-   - Which env, which requirements doc, run start and end timestamps.
-   - Per phase (A-E): completed / failed / killed, wall-clock duration,
-     and the agents actually spawned in each.
-   - For any agent that did not complete: its last tool call, last log
-     line, and the elapsed time before it stopped.
+1. MCP CONFIG
+   Print the playwright MCP entry from the opencode config verbatim
+   (file path + block). State: command, args, transport type
+   (stdio/sse/http), any url, any env, any timeout setting.
+   State the opencode version and the playwright MCP package version
+   as actually installed.
 
-2. MODEL CONFIG AS SENT
-   For every agent that ran, state model, reasoning variant,
-   temperature, top_p, maxTokens as actually sent (not as documented).
-   Flag any mismatch against the agent's .opencode/agents/*.md file.
+2. MCP HANDSHAKE FROM THIS SESSION
+   List the tools the playwright MCP currently exposes to THIS
+   top-level session. If the list is empty or errors, print the error.
+   Do not retry silently - report each attempt.
 
-3. LUNA AGENTS
-   - Did ui-tester, visual-qa, playwright-probe, design-critic each
-     spawn? Complete? Write their report files? Give paths.
-   - For visual-qa: screenshots captured vs screenshots actually sent
-     to the model, per batch. Any HTTP 400s or timeouts, verbatim.
+3. SINGLE TOOL CALL
+   From this session, call the playwright navigate tool against
+   http://localhost:3000 (start the env 7 UI first if it is not
+   serving; confirm it responds to curl before navigating).
+   Report: did it return, how long it took, and the verbatim result
+   or error.
+   If it times out at 30000ms, say so explicitly and report whether
+   a browser process was spawned at all (check the process list for
+   chrome/chromium/node playwright children).
 
-4. DESIGN-CRITIC
-   - Report file path. Scores per route per category, verbatim.
-   - Its written justification, verbatim.
-   - Under the current rubric (fix triggers below 4), pass or fail?
-   - Did the fix cycle trigger? How many cycles, and what changed?
+4. WHERE THE 30s COMES FROM
+   The status pane reports "Operation timed out after 30000ms".
+   Find what sets 30000: opencode MCP client default, config value,
+   or playwright default. Cite the file or docs. State whether it is
+   configurable and how.
 
-5. GATES FROM 398ba85
-   For each gate, state: did it execute, what did it return, evidence.
-   - VISUAL_DENSITY >= 7 domain floor
-   - DESIGN_VARIANCE and MOTION_INTENSITY (floors absent - what values
-     were declared, and were they checked at all?)
-   - imagery minimums
-   - KPI band and tabular-nums checks
-   - signature-moment round-trip: SIG-01 in art-direction ->
-     listed in §8 with route -> data-signature present in built DOM.
-     Grep the built output, not the docs.
-   If a gate lives inside an agent that did not complete, say so
-   explicitly and mark it INERT.
+5. SUBAGENT SCOPE
+   This is the key question. Compare how playwright is exposed to the
+   top-level session vs to a subagent:
+   - Print the tools/permission block from .opencode/agents/visual-qa.md
+     and .opencode/agents/playwright-probe.md verbatim.
+   - State whether MCP tools are inherited by subagents by default in
+     this opencode version, or must be explicitly granted.
+   - If explicit grant is required, state whether these agent files
+     grant it, with the exact line.
+   Answer directly: is playwright broken for everyone, or only
+   unavailable inside subagents?
 
-6. ART DIRECTION
-   - World selected, and the last 3 ledger entries.
-   - Anti-repeat gate: what distance did it compute, against what,
-     and did it pass?
-   - The three dial values declared in art-direction.md §10.
-   - Reference layout for the selected world vs what was built:
-     list each element the reference specifies and whether it exists
-     in the DOM.
+6. MINIMAL SPAWN TEST
+   Only if steps 2-3 succeeded from the top-level session.
+   Spawn playwright-probe with ONE instruction: navigate to
+   http://localhost:3000 and report the page title. Nothing else.
+   Report: did it spawn, did the tool call reach playwright, what came
+   back, and elapsed time. If it hangs past 60s, kill it and report
+   its last tool call.
 
-7. VALIDATORS
-   Run validate-imagery.mjs --self-test, validate-coverage.mjs and
-   validate-traceability.mjs against this build. Exit codes and
-   output verbatim. Note known false positives rather than fixing.
-
-8. DRIFT
-   - Diff .claude/agents/ against .opencode/agents/: which files
-     differ, and did the run read from the stale copies?
-
-Finish with a numbered list of every failure found, ordered by
-whether it is infrastructure (agent didn't run) or design (agent ran
-and produced bad output). Do not propose fixes.
+Finish with a one-line verdict from these four options, and the
+evidence for it:
+ (a) MCP server not starting at all
+ (b) MCP starts, browser never launches
+ (c) works top-level, not inherited by subagents
+ (d) works everywhere - failure was something else
