@@ -1,59 +1,35 @@
-Diagnostic only. Do not run any phase. Do not build anything.
-Change no files except where step 6 says otherwise.
-Report raw output for every step, including full error text and
-stack traces. Do not summarise errors.
+Task: parallelise Phase E. Two stages. Stop and report after stage 1.
 
-1. MCP CONFIG
-   Print the playwright MCP entry from the opencode config verbatim
-   (file path + block). State: command, args, transport type
-   (stdio/sse/http), any url, any env, any timeout setting.
-   State the opencode version and the playwright MCP package version
-   as actually installed.
+STAGE 1 - concurrency safety at width 2
+Do not modify any agent file yet.
+Spawn design-critic and ui-tester SIMULTANEOUSLY against the env 7
+build (both servers up first). design-critic: the same 4 routes.
+ui-tester: its normal route set.
 
-2. MCP HANDSHAKE FROM THIS SESSION
-   List the tools the playwright MCP currently exposes to THIS
-   top-level session. If the list is empty or errors, print the error.
-   Do not retry silently - report each attempt.
+Report:
+ - did both spawn, both complete, both write report files
+ - any Playwright timeout, browser-launch failure, or MCP error
+   (verbatim)
+ - whether the two agents got separate browser contexts or contended
+   for one - cite evidence (process list, screenshot filenames,
+   /tmp/opencode collisions)
+ - wall-clock for each, and total elapsed for the pair
+ - design-critic scores: do they still match the 3.2 baseline?
 
-3. SINGLE TOOL CALL
-   From this session, call the playwright navigate tool against
-   http://localhost:3000 (start the env 7 UI first if it is not
-   serving; confirm it responds to curl before navigating).
-   Report: did it return, how long it took, and the verbatim result
-   or error.
-   If it times out at 30000ms, say so explicitly and report whether
-   a browser process was spawned at all (check the process list for
-   chrome/chromium/node playwright children).
+If either agent fails or the scores move, STOP and report. Do not
+proceed to stage 2.
 
-4. WHERE THE 30s COMES FROM
-   The status pane reports "Operation timed out after 30000ms".
-   Find what sets 30000: opencode MCP client default, config value,
-   or playwright default. Cite the file or docs. State whether it is
-   configurable and how.
+STAGE 2 - only if stage 1 was clean
+Modify the orchestrator so Phase E fans out:
+ - ui-tester, visual-qa and design-critic spawn concurrently, not
+   in sequence
+ - Phase E completes when all three have written report files
+ - if any produces no report file, Phase E FAILS and the run stops -
+   no handover, no Phase F
 
-5. SUBAGENT SCOPE
-   This is the key question. Compare how playwright is exposed to the
-   top-level session vs to a subagent:
-   - Print the tools/permission block from .opencode/agents/visual-qa.md
-     and .opencode/agents/playwright-probe.md verbatim.
-   - State whether MCP tools are inherited by subagents by default in
-     this opencode version, or must be explicitly granted.
-   - If explicit grant is required, state whether these agent files
-     grant it, with the exact line.
-   Answer directly: is playwright broken for everyone, or only
-   unavailable inside subagents?
+Also add per-phase timing to a run log on disk: phase, start, end,
+duration, agents spawned, agent start/stop times. Write it as the run
+progresses, not at the end, so a killed run still leaves evidence.
 
-6. MINIMAL SPAWN TEST
-   Only if steps 2-3 succeeded from the top-level session.
-   Spawn playwright-probe with ONE instruction: navigate to
-   http://localhost:3000 and report the page title. Nothing else.
-   Report: did it spawn, did the tool call reach playwright, what came
-   back, and elapsed time. If it hangs past 60s, kill it and report
-   its last tool call.
-
-Finish with a one-line verdict from these four options, and the
-evidence for it:
- (a) MCP server not starting at all
- (b) MCP starts, browser never launches
- (c) works top-level, not inherited by subagents
- (d) works everywhere - failure was something else
+Report the diff and the new Phase E structure. Do not run a full
+pipeline yet.
