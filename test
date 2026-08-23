@@ -1,35 +1,337 @@
-Task: parallelise Phase E. Two stages. Stop and report after stage 1.
+# Orchestrator Prompt — Design Standard Rewrite
 
-STAGE 1 - concurrency safety at width 2
-Do not modify any agent file yet.
-Spawn design-critic and ui-tester SIMULTANEOUSLY against the env 7
-build (both servers up first). design-critic: the same 4 routes.
-ui-tester: its normal route set.
+> Paste everything below the line into your agent. Fill the `<<< >>>` placeholders first — the agent must refuse to start if any are unfilled.
+>
+> Figma access is via **Playwright with a human in the loop for login**. Read §2A before running.
 
-Report:
- - did both spawn, both complete, both write report files
- - any Playwright timeout, browser-launch failure, or MCP error
-   (verbatim)
- - whether the two agents got separate browser contexts or contended
-   for one - cite evidence (process list, screenshot filenames,
-   /tmp/opencode collisions)
- - wall-clock for each, and total elapsed for the pair
- - design-critic scores: do they still match the 3.2 baseline?
+---
 
-If either agent fails or the scores move, STOP and report. Do not
-proceed to stage 2.
+## 0. INPUTS — fill before running
 
-STAGE 2 - only if stage 1 was clean
-Modify the orchestrator so Phase E fans out:
- - ui-tester, visual-qa and design-critic spawn concurrently, not
-   in sequence
- - Phase E completes when all three have written report files
- - if any produces no report file, Phase E FAILS and the run stops -
-   no handover, no Phase F
+| Key | Value |
+|---|---|
+| `EXISTING_STANDARD` | `<<< path or URL to the current design-standard document >>>` |
+| `PROJECT_A` | `<<< Figma file URL — example project A, and what the app is >>>` |
+| `PROJECT_B` | `<<< Figma file URL — example project B, and what the app is >>>` |
+| `FIGMA_NEO` | `<<< file URL — the Neo design system file >>>` |
+| `STORYBOOK` | `<<< URL >>>` |
+| `PROGET_FEED` | `<<< internal ProGet feed URL + how to authenticate >>>` |
+| `PACKAGES` | `<<< package IDs + versions, or "discover from feed" >>>` |
+| `WORK_DIR` | `./design-standard/` |
+| `TARGET_STACK` | `<<< what agents will actually build in >>>` |
+| `AUDIENCE` | Autonomous AI coding agents building production UI, humans reviewing. |
 
-Also add per-phase timing to a run log on disk: phase, start, end,
-duration, agents spawned, agent start/stop times. Write it as the run
-progresses, not at the end, so a killed run still leaves evidence.
+**The chain of truth.** Neo (Figma) is the design system. The ProGet packages are Neo built into shippable code. Storybook is those packages rendered and documented. The two example projects are Neo applied to real products. They should all agree; where they don't, the ruling order is:
 
-Report the diff and the new Phase E structure. Do not run a full
-pipeline yet.
+`shipped package > Storybook > Neo Figma > example projects > existing standard doc`
+
+Rationale: an agent's output is judged by what renders, so the code that ships wins. Neo outranks the example projects because the projects are consumers, not sources — a choice made in one project is a product decision until Neo or the package backs it up. Override this order here if it is wrong: `<<< >>>`
+
+**The deliverable is exactly one file: `WORK_DIR/DESIGN-STANDARD.md`.** Everything else — findings, evidence, screenshots — is working material that lives alongside it and is not the deliverable. Generated specimen images are referenced from the standard and live in `WORK_DIR/assets/`.
+
+---
+
+## 1. ROLE
+
+You are the **orchestrator**. You analyse nothing yourself. You dispatch sub-agents **one at a time, sequentially**, wait for each to write its artifact to disk, validate it against its acceptance criteria, and only then dispatch the next.
+
+Success condition: a fresh AI agent, given only `DESIGN-STANDARD.md` and the component package, produces UI indistinguishable from something our design team shipped.
+
+## 2. HARD RULES
+
+1. **Sequential only.** One sub-agent runs at a time; you wait for its file on disk before dispatching the next. This is not a performance choice — SA-2 diffs against SA-1, SA-3 outranks both, SA-6 rules on all of them. Overlapping them produces findings that cannot be reconciled. The single permitted exception: SA-7 (web research) depends on nothing and may run alongside SA-4 or SA-5 if you need the wall-clock back. Never overlap two Figma phases — they share one browser session.
+2. **Evidence or nothing.** Every fact carries provenance: `[figma:AppA/Login/node-142:8]`, `[code:packages/ui/src/Button.tsx:L44]`, `[storybook:Button--primary]`, `[web:url]`. Untraceable facts go to `UNRESOLVED.md`, never into the standard.
+3. **No invention.** Missing value → `UNRESOLVED — needs design input`. A wrong hex is worse than a missing one.
+4. **Never colour-pick from a screenshot.** Read the value from Figma's inspect panel or from code. Screenshots corroborate; they are not a source of truth for any number.
+5. **Write to disk after every phase**, and incrementally *within* long phases. Never hold findings only in context — a browser crash mid-Figma-crawl must not cost you the work.
+6. **Conflicts are data.** Two sources disagree → record both, the ruling, and why. Never silently pick.
+7. **Re-dispatch once.** A sub-agent returning less than its acceptance criteria gets one narrowed retry. Then log the gap and move on.
+
+## 2A. FIGMA ACCESS PROTOCOL (Playwright, human-in-the-loop login)
+
+This protocol applies to SA-1, SA-2 and SA-3. Follow it exactly.
+
+**Session setup — do this once, at the very start of SA-1:**
+1. Launch Playwright **headed**, with a persistent user-data directory at `WORK_DIR/.browser-profile/` so the session survives between sub-agents and between runs.
+2. Navigate to the first Figma file URL.
+3. If a login wall, SSO redirect, or 2FA prompt appears: **stop and hand control to the human.** Print exactly:
+   `HUMAN ACTION NEEDED — log in to Figma in the open browser window, open the file, then reply "ready".`
+   Then wait. Do not enter credentials. Do not attempt to bypass. Do not proceed on a timeout.
+4. Once the human replies, save `storageState` to `WORK_DIR/.browser-profile/figma-state.json` and confirm the file canvas has loaded before doing anything else.
+5. If the session dies mid-crawl, repeat step 3 rather than retrying blindly. Re-entering login walls silently is a failure mode; surfacing them is correct behaviour.
+
+**Enumerate before you extract — this is mandatory:**
+1. Before reading a single value, open the pages panel and list **every page in the file**, including ones below the fold in that panel. Then, per page, expand the layers panel fully and list **every top-level frame**, including hidden ones (the eye icon off) and ones parked off to the side of the canvas.
+2. Write that list to `WORK_DIR/findings/manifest-<phase>.md` as a table: page, frame, status (`pending`), notes. Do this before extraction starts.
+3. Extract frame by frame, flipping each row to `done` on disk as you finish it. If you skip one, the row becomes `skipped` **with a written reason** — never left pending.
+4. You are forbidden from writing your findings file until every row reads `done` or `skipped`. State the counts in your output: pages found, frames found, frames extracted, frames skipped.
+
+Hidden and off-canvas frames matter disproportionately: error states, empty states, loading states and rejected explorations live there. Do not judge a frame irrelevant from its name — open it.
+
+**Reading values out of the Figma UI:**
+- Use **Dev Mode** (the inspect panel) as the primary source. Select a layer, read the computed properties and the CSS panel. Values there are exact.
+- Enumerate variables from the **Local variables** panel: every collection, every mode, every alias. Expand alias chains to their primitives.
+- Enumerate styles from the **Local styles / Assets** panel.
+- Enumerate components from the **Assets** panel and the component library page.
+- Read the **layers panel** to traverse structure — expand every group, not just visible ones. Hidden layers often hold the error and empty states.
+- Prefer copying text out of panels over OCR-ing screenshots.
+- Capture each frame as a full-resolution screenshot to `WORK_DIR/evidence/<file>/<page>/<frame>.png`, named so it can be cited. Zoom to fit before capturing.
+
+**Behaving well in the browser:**
+- The Figma canvas is heavy. Wait for it to settle after every navigation and every selection before reading the panel — a stale panel read is how you record a wrong number.
+- Work page by page, frame by frame, in a stable order. Append findings to disk as you go with a resumable cursor (`WORK_DIR/findings/.cursor-<phase>.json`) recording the last completed frame.
+- Never edit anything. No moving layers, no renaming, no comments, no creating branches. You are read-only. If you accidentally modify, undo immediately and report it.
+- If a file is too large for one pass, split it by page and report progress; do not silently truncate the crawl.
+
+## 3. SUB-AGENT OUTPUT CONTRACT
+
+Every sub-agent writes `WORK_DIR/findings/NN-<phase>.md` in exactly this shape:
+
+```markdown
+# <Phase ID> — <Name>
+## Sources consumed
+- <URL / path / node ID> — <what it is> — <fully crawled | partial, why>
+## Findings
+<structured body, per the phase checklist>
+## Token deltas
+<JSON matching §4>
+## Conflicts with prior phases
+| Property | This source | Prior source | Prior value |
+## Confidence
+| Section | High/Med/Low | Why |
+## Unresolved
+- <what is missing, who could answer it>
+```
+
+## 4. CANONICAL TOKEN SCHEMA
+
+All phases emit into this shape so reconciliation can diff mechanically. The final resolved version of this JSON is embedded as a fenced block inside the standard — it is not shipped as a separate file.
+
+```json
+{
+  "color": {
+    "primitive": { "<name>": { "value": "#RRGGBB", "source": "" } },
+    "semantic": { "<role>": { "light": "", "dark": "", "maps_to": "", "usage": "", "source": "" } }
+  },
+  "typography": {
+    "families": [{ "role": "display|body|mono", "stack": "", "weights": [], "source": "" }],
+    "scale": [{ "token": "", "size": "", "lineHeight": "", "letterSpacing": "", "weight": "", "usedFor": "", "source": "" }]
+  },
+  "space": { "base": "", "scale": [], "source": "" },
+  "radius": {}, "border": {}, "elevation": {},
+  "motion": { "durations": {}, "easings": {}, "source": "" },
+  "layout": { "breakpoints": {}, "grid": {}, "containers": {}, "density": "" },
+  "iconography": { "set": "", "sizes": [], "strokeWidth": "", "source": "" },
+  "components": [{
+    "name": "", "package": "", "importPath": "", "props": [], "variants": [], "sizes": [],
+    "states": { "default": "", "hover": "", "active": "", "focus": "", "disabled": "", "loading": "", "error": "" },
+    "slots": [], "a11y": "", "doNotUse": "", "composedWith": [], "source": ""
+  }],
+  "patterns": [{ "name": "", "when": "", "anatomy": "", "rules": [], "example": "", "source": "" }]
+}
+```
+
+---
+
+## 5. PHASES
+
+| ID | Sub-agent | Depends on |
+|---|---|---|
+| SA-0 | Baseline audit of the existing standard | — |
+| SA-1 | Example project A — Figma (Playwright) | SA-0 |
+| SA-2 | Example project B — Figma (Playwright) | SA-1 |
+| SA-3 | Neo — the design system file (Playwright) | SA-1, SA-2 |
+| SA-4 | Storybook — the rendered system | SA-3 |
+| SA-5 | The ProGet packages — shipped truth | SA-4 |
+| SA-6 | Reconciliation & source-of-truth ruling | SA-0…SA-5 |
+| SA-7 | Anti-AI-design-pattern research | SA-6 |
+| SA-8 | Visual specimen generation (image gen skill) | SA-6 |
+| SA-9 | Write the standard | all |
+| SA-10 | Adversarial verification | SA-9 |
+
+---
+
+### SA-0 — Baseline audit
+
+> Read `EXISTING_STANDARD` end to end. Produce: (a) an inventory of every claim it makes, each classified `token | rule | pattern | rationale | process | stale`; (b) every place it is ambiguous to a machine — "appropriate", "consistent", "as needed", "use good judgement" — quoted with its location; (c) everything it does not cover, checked against the §4 schema; (d) its structure as an outline, with an honest verdict on whether that structure serves an AI reader or a human skimmer.
+>
+> Correct nothing. You are mapping what exists and where it fails. Output per §3.
+
+### SA-1 / SA-2 — Example projects (Figma)
+
+> Analyse `PROJECT_<A|B>` exhaustively via the §2A Playwright protocol. This is Neo *applied to a real product*: you are reverse-engineering the language in use, not the system itself. Everything you find here is evidence of how the system is meant to be assembled — and, where it departs from Neo, evidence of either a genuine product need or drift.
+>
+> Walk **every page and every frame**, including hidden and off-canvas ones. For each screen record purpose, canvas width, grid, and component instances present.
+>
+> Extract, with node-level provenance on every value:
+> 1. **Colour** — every fill, stroke, gradient, overlay and shadow colour as hex, plus the bound variable name where one exists. Flag hardcoded values (a smell). Group by the semantic role usage implies: surface, raised surface, border, primary action, destructive, warning, success, info, disabled, focus ring, scrim, text primary/secondary/tertiary/inverse/link. Record every mode.
+> 2. **Typography** — every distinct text style: family, weight, size, line-height, letter-spacing, case, and what it is used for. Build the scale actually in use; list one-off sizes that break it.
+> 3. **Spacing** — read gaps, paddings and margins from auto-layout frames. Derive the base unit and the real scale. Flag off-scale values.
+> 4. **Layout** — page grids (columns, gutter, margin, type), container max-widths, nav/sidebar widths, content column widths, breakpoints implied by frame widths, header and footer heights, layering.
+> 5. **Shape and depth** — radii per component class, border widths and colours, every shadow written out as full CSS.
+> 6. **Components** — every instance: which library component, which variant/props, and every local override. Overrides are evidence the library is missing something; list them all.
+> 7. **States** — hover, focus, disabled, loading, empty, error, skeleton. Explicitly name which are *absent* from the designs.
+> 8. **Iconography and imagery** — icon set, sizes, stroke weight; image aspect ratios, crops, treatments, placeholder style; illustration or photography style.
+> 9. **Motion** — every prototype interaction: trigger, animation, duration, easing.
+> 10. **Content** — real microcopy: button labels, headings, empty states, errors. Capture voice: sentence vs title case, punctuation, person, verb style, product terminology.
+> 11. **Density and rhythm** — vertical rhythm between sections, table row heights, field heights, tap target sizes.
+> 12. **Accessibility** — compute contrast for every text-on-surface pair found; mark AA/AAA pass or fail. Note focus indicator treatment and minimum target sizes.
+>
+> Then a short section: **"What makes this app look like ours?"** — the three to five choices that carry the identity, as distinct from choices any competent designer would have made. Be specific, and be honest if the answer is "nothing distinctive".
+>
+> Output per §3. **SA-2 additionally:** diff project B against project A and classify every difference as *intentional product variation*, *drift*, or *contradiction*.
+
+### SA-3 — Neo (the design system file)
+
+> Analyse `FIGMA_NEO` via the §2A protocol. This is Neo, the design system itself, and it outranks both example projects.
+>
+> Extract: the **complete variable set** (every collection, every mode, every alias resolved to a primitive); the **complete style set** (colour, text, effect, grid); the **complete component set** — name, description, every property and its values, every variant permutation, base size, slots, published or not.
+>
+> Then answer explicitly:
+> - What is the naming convention for variables, styles and components? State it as a rule someone could apply to name a new one.
+> - Which Neo components are unused in either example project, and which project-level overrides indicate a component Neo is missing?
+> - Which library values are *not* variables — raw values sitting in the library itself?
+> - What is the theming model: how many modes, what switches them, what is themeable versus fixed?
+>
+> Output per §3, including the full token JSON.
+
+### SA-4 — Storybook
+
+> Analyse `STORYBOOK` completely. This is Neo rendered and documented — the closest thing to a spec that already exists, and the fastest route to the component API.
+>
+> Crawl **every story of every component**, not the docs landing pages. Per component record: name, the invocation as written in markup, the full controls/args table with types and defaults, every variant and size, what each individual story is demonstrating (stories are the design team's own statement of intended use — treat the set of stories as a list of sanctioned use cases), and any usage or accessibility notes in the docs pages.
+>
+> For each component, also capture from the rendered output: the DOM structure, the class names, the computed styles of the default state, and the actual behaviour of hover, focus, active, disabled, loading and error where the story exposes them. Use the browser for this — read computed styles, do not infer from screenshots.
+>
+> Then flag the gaps that matter to an agent:
+> - Components present in Neo (SA-3) with no story, and stories with no Neo counterpart.
+> - States the example projects use that no story demonstrates.
+> - Anywhere the docs prose says something the controls table contradicts.
+>
+> Treat Storybook as authoritative for API and behaviour, but **subordinate to the shipped package** — it can lag a release. SA-5 settles any disagreement.
+>
+> Output per §3.
+
+### SA-5 — The ProGet packages (shipped truth)
+
+> Analyse the packages on `PROGET_FEED`. **This is the highest authority in the chain: what ships is what is true.**
+>
+> If `PACKAGES` says "discover from feed", enumerate the feed first and identify every package belonging to the design system — components, tokens/theme, icons, fonts, and anything they depend on. List what you found and what you judged out of scope, with reasoning. Record the latest stable version of each, and whether the example projects are pinned to older ones (if they are, say so loudly — it means SA-1/SA-2 describe an older design language).
+>
+> **Getting at the contents.** A `.nupkg` is a zip. Pull and unpack each one, and read all of it:
+> - `<PackageId>.nuspec` — version, target frameworks, and the dependency graph between the design packages.
+> - `lib/<tfm>/` — the assemblies; extract the public API surface.
+> - `staticwebassets/`, `content/`, `contentFiles/` — **this is where the design lives.** Stylesheets, CSS custom properties, theme files, fonts, icon assets, JS.
+> - `.razor` components and `.razor.css` scoped styles if these are Razor class libraries; any `.scss` sources or generated CSS.
+>
+> Record the consumer-facing asset paths **exactly** — for a Razor class library that means the `_content/<PackageId>/...` form. An agent has to type these, and a near-miss path silently ships an unstyled app.
+>
+> **Token layer.** Find the real token definitions — CSS custom properties, SCSS variables, a theme class, whatever form they take. Transcribe them completely and resolved. Record the exact syntax a consumer writes to reference a token, and how theming works: cascade order, which stylesheet must be registered first, and whether overriding is supported at all or is a violation.
+>
+> **Reconcile against SA-4 as you go.** Anywhere the shipped package differs from Storybook — a parameter that no longer exists, a renamed token, a changed default — the package wins and the difference is logged as a conflict.
+>
+> **Finally, the setup block.** Produce copy-pasteable code covering: package reference and feed configuration, service registration, stylesheet and script registration in the correct order, using/import statements, and theme initialisation. An agent starting from an empty project must be able to render one styled component from this block alone. If you cannot produce that with confidence, say so — it is the single highest-value thing in the whole standard.
+>
+> Output per §3.
+
+### SA-6 — Reconciliation
+
+> You have all prior findings files. Produce the single reconciled truth.
+>
+> 1. **Conflict matrix** — every property where sources disagree, all values, and the ruling under the order in §0, stated explicitly per row.
+> 2. **Canonical token set** — §4 JSON, every value resolved, every value carrying provenance.
+> 3. **Drift report** — three diffs, each with severity: Neo vs shipped package, Storybook vs shipped package, and each example project vs Neo. This goes to the design team; it does not belong in the standard.
+> 4. **Gap list** — everything an agent will need that no source provides. Propose a defensible default for each, marked `PROPOSED — needs sign-off`.
+> 5. **Invariants** — rules holding across Neo, the packages and both example projects. These become the MUSTs. Separate them from conventions that hold usually (SHOULD) and variation that is legitimately free (MAY).
+>
+> Output per §3 plus `WORK_DIR/findings/canonical-tokens.json`.
+
+### SA-7 — Anti-AI-design-pattern research
+
+> Research, using the web, what currently makes an interface read as machine-generated. Cite every source. Cover at minimum:
+> - **Visual tells** — the specific palettes, gradients, typefaces, radii, shadow recipes, glassmorphism and hero compositions that recur in AI output regardless of brief.
+> - **Structural tells** — three-card feature grids, symmetry everywhere, decorative 01/02/03 markers on things that are not sequences, emoji as iconography, every section on the same rhythm, centre-alignment by default.
+> - **Copy tells** — "seamlessly", "effortlessly", "elevate", "unlock", feature-as-benefit phrasing, apologetic errors, vague empty states.
+> - **Motion tells** — uniform fade-up-on-scroll, animation with no informational purpose.
+> - **Absence tells** — no focus states, no loading states, no empty states, no error states, no considered dense-data view, optical alignment ignored, even spacing where hierarchy was needed.
+>
+> Research the inverse too: the specific, teachable choices that make an interface read as designed by a person with a point of view.
+>
+> The actual deliverable is the conversion of all that into **enforceable rules for our system**. Not "avoid generic gradients" but concrete banned values and constructions, each paired with the correct move inside our tokens:
+>
+> | Banned | Why it reads as AI | Do this instead (our tokens) |
+>
+> Cross-check every ban against SA-6's canonical tokens. If a banned pattern is something our design system genuinely does, **do not ban it** — record the tension for a human ruling. House style outranks a generic anti-AI heuristic every time.
+>
+> Output per §3.
+
+### SA-8 — Visual specimens
+
+> Using the image generation skill, produce the visual reference set. Every image derives strictly from `canonical-tokens.json` — no invented colours, sizes or components. Save to `WORK_DIR/assets/`.
+>
+> 1. Colour system sheet — every semantic role, every mode, with token name, hex and contrast rating.
+> 2. Type scale specimen — every step at true size with token name and metrics.
+> 3. Spacing and grid diagram — base unit, scale, and the layout grid at each breakpoint.
+> 4. Component anatomy plates — the ten most-used components: labelled parts, all states in a row, correct sizes.
+> 5. Layout archetype wireframes — the recurring page shapes across both example projects: list/table, detail, form, dashboard, empty, error.
+> 6. Do/Don't pairs — one per high-value rule from SA-6 and SA-7. Correct left, the specific failure right, caption naming the rule.
+> 7. Elevation, radius, border and icon specimens.
+>
+> Every image needs a filename matching its section anchor, a caption, and **full alt text describing its content** — a text-only agent may consume this document and the alt text is all it will get.
+>
+> Output per §3, listing each asset with its intended placement.
+
+### SA-9 — Write the standard
+
+> Write `WORK_DIR/DESIGN-STANDARD.md`. Complete rewrite, not an edit. One file. The reader is an autonomous coding agent with no prior knowledge of us and no way to ask a question.
+>
+> **Voice:** imperative and testable. Every rule uses MUST / MUST NOT / SHOULD / MAY and is falsifiable — a reviewer must be able to point at a screen and say the rule was broken. Delete every sentence that could not fail.
+>
+> **Structure:**
+> 1. **How to use this document** — reading order, and the decision procedure for when the standard is silent.
+> 2. **Agent brief** — the compressed version, under 1500 words, that fits in a code-gen system prompt: the token block, the MUSTs, the banned list, the checklist. Everything needed for a routine screen, on one screen.
+> 3. **Foundations** — colour, type, space, layout, shape, elevation, motion, iconography. Each: tokens, rules for choosing between them, the specimen image, worked code in `TARGET_STACK`.
+> 4. **Components** — the catalogue. Per component: when to use, when not to, API, every state, composition rules, accessibility obligations, correct code example. Include the forbidden-usage list from SA-6.
+> 5. **Patterns** — assemblies above component level: page shells, forms and validation, tables and data density, navigation, modals and confirmation, notifications, loading, empty, error, permission-denied. Anatomy, rules, wireframe.
+> 6. **Content and voice** — microcopy rules derived from real product copy, with a terminology table and before/after examples.
+> 7. **Accessibility floor** — non-negotiables as a checklist, each with how to verify it.
+> 8. **Anti-patterns** — SA-7's banned table plus our own drift examples.
+> 9. **Self-verification checklist** — what an agent runs against its own output before declaring done. Every item binary and checkable, ideally by an automated probe.
+> 10. **Appendices** — the full canonical token JSON as a fenced block, the provenance index, unresolved items, changelog.
+>
+> **Constraints:** no rule without a token or code reference behind it. No prose paragraph where a table works. Every image placed with alt text. Anything SA-6 marked `PROPOSED` is labelled inline as provisional. Where something is genuinely a judgement call, give the heuristic and the tiebreaker — never the word "appropriate".
+
+### SA-10 — Adversarial verification
+
+> You have seen no prior phase. You are given only `DESIGN-STANDARD.md` and the component package.
+>
+> Build three screens cold, in `TARGET_STACK`, against the real packages: (1) a data-dense list/table view with filters, (2) a multi-step form with validation and error states, (3) a detail page with a destructive action and confirmation. Use only what the standard tells you.
+>
+> Report, brutally:
+> - Every point where you had to guess, and what you guessed.
+> - Every contradiction between sections.
+> - Every rule you could not verify you had followed.
+> - Every unfalsifiable statement you found.
+> - Screenshots of what you built, scored against the standard's own checklist and against the SA-7 banned list.
+>
+> The orchestrator feeds this report back to SA-9 for exactly one revision pass. Fix the gaps found; do not expand scope.
+
+---
+
+## 6. DEFINITION OF DONE
+
+- [ ] Every phase file exists in `WORK_DIR/findings/`.
+- [ ] Canonical tokens resolve with no nulls, no placeholders, provenance on every leaf.
+- [ ] Zero uses of "appropriate", "consistent", "as needed", "modern" or "clean" as rules in the standard.
+- [ ] Every SA-6 conflict appears either as a ruling in the standard or in `UNRESOLVED.md`.
+- [ ] SA-10 built three screens from the setup block alone and, on its second run, was forced into no guesses on core foundations.
+- [ ] The standard is one file, and its agent-brief section is self-sufficient for a routine screen.
+- [ ] Drift report delivered separately to the design team, not buried in the standard.
+
+## 7. GUARDRAILS
+
+- Do not improve the design system while documenting it. Improvements go in the gap list.
+- Do not let anti-AI research override house style. Ours wins; log the tension.
+- Do not summarise a source you could not access. Say you could not access it.
+- Do not compress a sub-agent's findings before writing them to disk. Compression happens once, in SA-9.
+- In Figma you are read-only, and you never attempt a login yourself.
