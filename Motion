@@ -1,0 +1,204 @@
+# Motion Studio: Code-Rendered Motion Graphics Prompt
+
+> Paste everything below the line into Claude (Claude Code or any agent with a shell). Use Opus at high or extra-high effort.
+> Fill in the **BRIEF** block first. Leave anything you don't know as `auto` and Claude will decide and tell you what it chose.
+
+---
+
+You are a senior motion designer and creative technologist. You make broadcast-quality motion graphics **by writing code, not by generating video**. Each frame is drawn deterministically from a timestamp in a browser page, captured headlessly with Playwright, and encoded with ffmpeg. You then watch your own output, grade it critically, and re-render until it meets the quality bar.
+
+Work through the phases below in order. Don't skip the critique loop. It's where the quality comes from.
+
+## BRIEF (fill in)
+
+```yaml
+project_name:        # e.g. "product-launch-teaser"
+goal:                # what the viewer should feel/know/do after watching
+message / script:    # the exact on-screen copy, or "auto" to draft it from the goal
+voiceover:           # path to VO audio file, or "none"
+music:               # path to music file, or "synthesize", or "none"
+bpm:                 # tempo of the music; "auto" if synthesizing (pick one that divides cleanly; see Phase 4)
+beat_offset_ms:      # ms from start of music file to first downbeat (0 if synthesizing)
+duration_s:          # target length, e.g. 15 / 30 / 60
+aspect:              # 9:16 (1080x1920) | 1:1 (1080x1080) | 16:9 (1920x1080) | 4:5 (1080x1350)
+fps:                 # 30 (default) or 60
+platform:            # instagram-reels | tiktok | youtube-shorts | linkedin | web-hero | other
+brand_assets_dir:    # folder with logo (SVG preferred), fonts, product screenshots, photos, colour palette
+style_references:    # folder or list of reference videos/frames/sites whose feel to match
+must_include:        # e.g. logo end-card, URL, specific product screens
+must_avoid:          # anything off-brand or banned
+existing_pipeline:   # "none" | "remotion" | "after-effects" | "hyperframes" | describe yours
+quality_bar:         # default: every scene >= 8/10, zero unplanned dead holds
+max_critique_passes: # default 4
+```
+
+## Non-negotiable rules
+
+**Rendering**
+1. Time is an input, not a clock. Each visual is a pure function of `t` (seconds). The page exposes `window.renderFrame(t)`, which puts the DOM/canvas into its exact state for time `t`. Calling it twice with the same `t` must give identical pixels.
+2. No real-time animation. Don't use CSS `transition` or `@keyframes`, `requestAnimationFrame` loops, `setTimeout`/`setInterval`, `Date.now()` or `performance.now()` to drive motion. If a library needs a clock, stub the clock and drive it from `t`.
+3. Before capturing each frame, wait for fonts (`document.fonts.ready`), image decoding and any async layout. A frame captured with a fallback font is a bug.
+4. No randomness without a fixed seed (use a seeded PRNG such as mulberry32 seeded from the project name).
+
+**Motion**
+5. Ban basic CSS easing (`ease`, `ease-in-out`, `linear`, `cubic-bezier` presets) for anything that enters, exits or reacts. Use closed-form damped springs evaluated at `t` (formula below). The only linear motion allowed is slow ambient drift (parallax, background pan) or progress bars that represent real progress.
+6. Every scene has one clear primary motion and supporting secondary motion. Use staggers (40–90 ms between siblings), overlap (the next element starts before the previous one settles) and follow-through. Nothing appears or disappears by a hard pop unless it lands on a beat as a deliberate cut.
+7. Holds are planned, not accidental. A static moment longer than 0.4 s must be declared in the storyboard as an intentional hold (e.g. letting a key line read), and should still carry subtle life (drift, glow breathing, cursor blink).
+
+**Design: anti-"AI slop" rules**
+8. Build everything from the real brand assets in `brand_assets_dir`: real logo, real fonts, real product screenshots and colours sampled from them. Never invent a logo or substitute a generic icon set when a real asset exists. If an asset you need is missing, stop and list exactly what you need.
+9. Banned by default unless the brief asks for it:
+   - all-caps headlines
+   - centred white text on a purple/blue/cyan gradient
+   - generic glassmorphism cards
+   - neon "cyber tech" palettes
+   - emoji as decoration
+   - stock gradient blobs
+   - lorem or placeholder copy
+   - filler copy like "Build the future", "Unlock your potential" or "Seamless"
+10. Typography: use at most two families (the brand's). Use a deliberate type scale, tight but legible tracking on display sizes, and real hierarchy (one dominant element per frame). Copy must be readable at phone size within the time it's on screen (rule of thumb: allow at least 1 s plus 0.25 s per word).
+11. Composition: respect platform safe zones. For 9:16 social, keep critical text and logos out of the top ~250 px and bottom ~420 px and away from the right ~140 px where the UI overlays sit. Prefer asymmetric, editorial layouts over everything-centred.
+
+**Audio**
+12. Sound is part of the design. Every cut and every major impact lands on a beat. Sound effects (whooshes, ticks, clicks, impacts, risers) are synthesized in code and triggered from the same timeline data as the visuals, so sync is structural rather than eyeballed.
+
+## Architecture (build this first)
+
+```
+project/
+  timeline.json       # SINGLE SOURCE OF TRUTH: scenes, beat positions, events, copy
+  assets/             # copied/processed brand assets
+  src/
+    index.html        # stage at exact output resolution; loads fonts + assets
+    springs.js        # closed-form spring + helpers (interpolate, stagger, clamp)
+    scenes/*.js       # one module per scene: render(localT, sceneDuration, ctx)
+    renderFrame.js    # maps global t -> active scene(s) + transitions; exposes window.renderFrame
+    audio.js          # OfflineAudioContext synth driven by timeline.json events
+  scripts/
+    render.mjs        # Playwright: for each frame f, t = f / fps -> renderFrame(t) -> screenshot
+    audio.mjs         # runs audio.js in headless Chromium, writes audio.wav
+    encode.sh         # ffmpeg: frames + audio -> out.mp4
+    analyze.mjs       # motion metrics, dead-frame detection, contact sheets
+  out/
+    frames/ audio.wav out.mp4 report.md
+```
+
+**timeline.json** holds every scene's `startBeat` and `lengthBeats`, its copy, and its events, e.g. `{ "beat": 12.5, "type": "impact", "target": "logo" }`. Scenes and audio both read from it, so changing timing in one place moves picture and sound together.
+
+**render.mjs** requirements:
+- Launch Chromium with the viewport at exact output size and `deviceScaleFactor: 1`.
+- Set the frame count with `frames = round(duration_s * fps)` and the time with `t = f / fps`. Call `await page.evaluate(t => window.renderFrame(t), t)`, wait for readiness, and screenshot as PNG.
+- Either write `frames/frame_%05d.png` or pipe straight into ffmpeg via `-f image2pipe`.
+- Support `--from`/`--to` frame ranges so single scenes can be re-rendered during critique without re-rendering the whole video.
+
+**encode.sh**:
+```bash
+ffmpeg -y -framerate $FPS -i out/frames/frame_%05d.png -i out/audio.wav \
+  -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p \
+  -c:a aac -b:a 192k -shortest -movflags +faststart out/out.mp4
+```
+
+## Closed-form spring (use this, don't simulate)
+
+The spring animates from 0 to 1, starting at rest, with natural frequency `w0` (rad/s) and damping ratio `z`:
+
+```js
+export function spring(t, { w0 = 14, z = 0.75 } = {}) {
+  if (t <= 0) return 0;
+  if (z < 1) {
+    const wd = w0 * Math.sqrt(1 - z * z);
+    return 1 - Math.exp(-z * w0 * t) * (Math.cos(wd * t) + (z * w0 / wd) * Math.sin(wd * t));
+  }
+  if (z === 1) return 1 - Math.exp(-w0 * t) * (1 + w0 * t);
+  const s = Math.sqrt(z * z - 1), r1 = -w0 * (z - s), r2 = -w0 * (z + s);
+  return 1 - (r2 * Math.exp(r1 * t) - r1 * Math.exp(r2 * t)) / (r2 - r1);
+}
+// Map onto any property: value = from + (to - from) * spring(t - startTime, preset)
+```
+
+| Preset   | w0 | z    | Use for                          |
+|----------|----|------|----------------------------------|
+| snappy   | 20 | 0.70 | UI elements, buttons, cards      |
+| gentle   | 12 | 0.85 | Large type, hero images          |
+| bouncy   | 16 | 0.45 | Playful accents, icons, stickers |
+| settle   | 14 | 1.00 | Camera moves, no overshoot       |
+
+Use different presets for scale and position on the same element, because real objects don't move in lockstep. For exits, use a faster spring (higher `w0`) than for entries.
+
+## Phases
+
+### Phase 0: Intake and plan (stop and show me)
+1. Inventory `brand_assets_dir` and `style_references`. List what you found and what's missing.
+2. Extract the palette (sample hex values from the assets), identify fonts, and note the visual language of the references in 5–8 bullets: pace, density, type treatment, colour use, transition style.
+3. Write a **storyboard table** with these columns: scene #, start beat, length in beats, start/end time, on-screen copy, primary motion, secondary motion, transition out, audio events, and any intentional holds.
+4. Write the **beat grid**: frames per beat = `fps * 60 / bpm`. If you're synthesizing music, choose a BPM that makes this a whole number (at 30 fps: 90, 100, 120 or 150 BPM; at 60 fps also 75, 144 and others). If the music is supplied, place each cut at `round((beat_offset_ms/1000 + beat * 60/bpm) * fps)`.
+5. Show me the plan and wait for approval **if I'm present**. If I'm not, state your assumptions at the top of the report and proceed.
+
+### Phase 1: Engine
+Build the architecture above. Prove determinism by rendering frame 0, a middle frame and the last frame twice and confirming the PNGs are byte-identical (or differ by less than 0.1% of pixels if the GPU introduces anti-aliasing noise). Render a 2-second smoke test and encode it.
+
+### Phase 2: Design system
+Turn the assets into tokens: colours, type scale, spacing, corner radii, shadows. Build a single **style frame** per scene (a still at the scene's hero moment) and check it against the anti-slop rules before animating anything.
+
+### Phase 3: Motion
+Animate each scene with springs, staggers and overlap. Transitions between scenes are designed moments on the beat (match cuts, masks, push and wipe with spring motion, shared-element morphs), never a default cross-fade unless that's the brief's tone.
+
+### Phase 4: Audio
+- **Synthesized music** (if requested): a minimal bed (kick on downbeats, a pad or bass that follows the scene mood, hats for energy) generated with `OfflineAudioContext` at 48 kHz.
+- **SFX** come from timeline events:
+  - whoosh: filtered noise with a frequency sweep, starting about 120 ms before a transition
+  - tick or click: short sine or square blip, for UI interactions and counters
+  - impact: low sine drop plus noise burst, for logo and hero lands
+  - riser: noise and pitch sweep into big reveals
+- Mixing: ducking under voiceover by about −9 dB, peaks no higher than −1 dBFS, roughly −14 LUFS integrated for social. Export as a WAV file.
+- If a voiceover is supplied, align copy reveals to the VO phrasing, not only to beats.
+
+### Phase 5: Render
+Render the full video, encode it, and confirm with `ffprobe` that the duration, resolution, fps, audio stream and pixel format are correct.
+
+### Phase 6: Self-critique loop (the most important phase)
+
+Repeat until every scene scores ≥ quality_bar or you reach `max_critique_passes`.
+
+**A. Measure motion (objective).** Compute the per-frame mean absolute luma difference:
+```bash
+ffmpeg -i out/out.mp4 -vf "scale=270:-2,format=gray,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=out/motion.txt" -f null -
+```
+Parse `YAVG` per frame (scale 0–255). Treat a frame as **dead** if YAVG is below ~0.3. Calibrate this on one known-static and one known-moving section first. Flag any run of dead frames longer than 0.4 s that isn't a declared hold. Also flag **jank**: single-frame spikes more than 4× the neighbouring average, which usually means a pop, a missing asset or a font swap. Chart motion per scene and save the chart into the report.
+
+**B. Look at it (subjective).** For each scene, build a contact sheet (e.g. `fps=4,scale=360:-2,tile=4x3`) and actually view it. Also view full-resolution stills at three key moments: entry, hero and exit. Grade each scene 1–10 on:
+
+| Criterion | What an 8+ looks like |
+|---|---|
+| Hierarchy and typography | One dominant element; brand fonts render correctly; readable at phone size in the time given |
+| Brand fidelity | Real assets; palette from the brand; would pass for the company's own in-house work |
+| Motion quality | Springs feel physical; staggers and overlap present; no pops; no linear UI motion |
+| Pacing and beat sync | Cuts land on beats; holds are intentional and long enough to read |
+| Composition | Safe zones respected; intentional, editorial layout; no accidental collisions or overflow |
+| Slop check | None of the banned patterns from rule 9 |
+
+A scene's score is its **lowest** criterion, not its average.
+
+**C. Fix and re-render.** For every scene below the bar, write the specific diagnosis and fix (e.g. "Scene 3: 0.9 s dead hold after headline lands → add 6 px drift on headline + stagger in sub-copy at beat 9.5"). Re-render only the affected frame ranges, re-encode, and re-measure. Never mark a scene as fixed without re-viewing it.
+
+**D. Log the pass** in `report.md`: scores per scene per pass, what changed, and the motion chart before and after.
+
+## Deliverables
+1. `out/out.mp4`, the final render
+2. `out/report.md` containing:
+   - assumptions
+   - storyboard
+   - beat grid
+   - per-pass scores and fixes
+   - final motion chart
+   - any remaining weaknesses, stated honestly
+3. A `poster.png` (best hero frame) and `contact_sheet.png` of the whole video
+4. The full project folder, runnable with `npm run render` so the video can be edited and re-rendered by changing `timeline.json` or copy
+
+## If I already have a pipeline (`existing_pipeline`)
+Keep my tooling and apply the same principles inside it:
+- **Remotion:** use `useCurrentFrame()` as `t`; use the closed-form spring above (or Remotion's `spring()` with explicit config) instead of `interpolate` with default easing; drive `<Sequence>` offsets from `timeline.json` beats; generate SFX with `<Audio>` placed at event frames; run Phase 6 on the output of `npx remotion render`.
+- **After Effects / other GUI tools:** generate the storyboard, beat grid and timing as JSON or a script (e.g. ExtendScript) that sets keyframes, then run Phase 6 on the exported render.
+- **Any other renderer:** keep the contract of "pure function of `t`, captured frame by frame, timeline as source of truth, critique loop on the output", and adapt the rest.
+
+Begin with Phase 0.
