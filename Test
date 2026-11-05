@@ -1,5 +1,6 @@
-Good catch. Before redeploying:
-1. Check whether REST /api/dispatch also goes through create_dispatched_jobs. If it does, dev dispatch is broken for everyone right now, so tell me.
-2. Explain why the concurrency test passed when this line throws on the first call. If it mocks the session or the insert, replace it with a test that runs create_dispatched_jobs against a real Postgres (a local container, or a throwaway schema on the dev DB): two concurrent identical calls produce one row and one scheduled run. It must fail without your import fix and pass with it.
-3. Correct the commit message: the generic sqlalchemy insert has no on_conflict_do_nothing because it's Postgres-only. This is not a dialect-routing issue.
-4. Push, wait for the pipeline, deploy to dev, then rerun the full ingress smoke test including the >60s stream.
+Stop on the test harness. Don't change _patch_base_schema or mutate table schemas, and don't write test rows to the dev DB.
+
+1. Revert any test-harness changes from this attempt. Keep the postgresql dialect import fix.
+2. Add one DB-free regression test: build the dedupe insert statement and compile it with the postgresql dialect. Assert the SQL contains ON CONFLICT (idempotency_key) WHERE <exactly the partial index predicate> DO NOTHING. Building the statement is what threw, so this catches the bug without a database.
+3. Run the existing suite, push, let the pipeline pass, deploy to dev, then run the full ingress smoke. Its duplicate-POST check is the real-Postgres test.
+4. Add a note to docs/decisions that the suite has no Postgres integration tests, and stop there. Don't build them now.
