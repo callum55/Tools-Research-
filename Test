@@ -1,5 +1,10 @@
-Approved, with these changes:
-1. Don't use the raw SQL UPDATE on dev. Set the flag through the management API with a change_reason, or by running the register script after deploy, so agent versioning stays correct. Include allow_as_subagent in configuration_hash.
-2. The register script lives in sdlc-temporal, so that's a separate MR. In Checkpoint 2, give the deploy order: platform-agents-api first (migration, and the API accepts the field), then the sdlc-temporal MR, then run the sync. Check whether the management API rejects unknown fields; if it does, say so, because then the order is mandatory.
-3. Tests: a primary agent with the flag resolves as a subagent; a primary without it is still rejected; child jobs can't spawn subagents; the register script's payload includes the flag.
-Continue with Phase B.
+Not ready to merge. Fix these, then report as CHECKPOINT 2b:
+1. Chain trigger: on_complete must fire only when the run's result says it's finished, not on every successful job. If the result has a status field, chain only when it's "complete"; if it has none, chain on job success. Test: an RQ-Interview turn with status needs-input does NOT chain; status complete does.
+2. Return the chained job_id in the parent's result (dispatch, reply and get_result), so the caller can wait on it.
+3. Remove the per-request on_complete override. Stored chains must run the same permission check as a direct dispatch, under the original caller's identity. Add a test.
+4. reply(session_id, user_text): infer the agent and workspace from the session. The tool description must tell the caller to pass the user's words verbatim and never answer the agent's questions itself. Show me the final description text.
+5. When get_result or a dispatch result contains a document (RQ-Interview's document, RQ-Pack's markdown), return it as its own text/markdown content item, not only via get_document.
+6. Confirm raw output deltas are no longer sent as progress messages, only readable status lines.
+7. Discard the uncommitted smoke-script change. Never use SEC-ACCESS in smoke tests.
+8. Deploy steps: say whether setup.sql's ALTER TABLE runs automatically on deploy or whether I run it, and include the MR link.
+Keep unknown-field behaviour as it is.
