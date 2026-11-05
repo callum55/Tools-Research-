@@ -1,10 +1,5 @@
-Dev is deployed. Before the smoke test, confirm:
-1. GET /version on the dev ingress reports 1.1.3
-2. The live dev VirtualService (kubectl get virtualservice -o yaml) has the /mcp and /api/dispatch/stream routes with timeout 330s and retries 0, above the catch-all
-
-Then write the ingress smoke script (the last write was aborted). Read PLAT_AGENT_GATEWAY from the environment at runtime. Never write the key into the file, logs or output, and keep the script untracked. Target https://api-platform-agents-api.apps.bss.dev.gcp/mcp/ and cover:
-- dispatch over 60s with a progressToken
-- the same without a token
-- get_result long-poll on a running job
-- the same POST sent twice with the same JSON-RPC id (expect the same job_id and one dispatched row)
-For each call report: time to first byte, how long the stream stayed open, how it ended (final result, error or cut) and the job_id.
+Good catch. Before redeploying:
+1. Check whether REST /api/dispatch also goes through create_dispatched_jobs. If it does, dev dispatch is broken for everyone right now, so tell me.
+2. Explain why the concurrency test passed when this line throws on the first call. If it mocks the session or the insert, replace it with a test that runs create_dispatched_jobs against a real Postgres (a local container, or a throwaway schema on the dev DB): two concurrent identical calls produce one row and one scheduled run. It must fail without your import fix and pass with it.
+3. Correct the commit message: the generic sqlalchemy insert has no on_conflict_do_nothing because it's Postgres-only. This is not a dialect-routing issue.
+4. Push, wait for the pipeline, deploy to dev, then rerun the full ingress smoke test including the >60s stream.
