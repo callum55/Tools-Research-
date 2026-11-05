@@ -1,3 +1,5 @@
-Two checks before I merge, answer briefly:
-1. Does PATCH /api/agents/update apply only the fields sent, or does it reset omitted fields to their defaults? If it resets them, the sdlc-temporal sync or any re-registration could wipe on_complete or allow_as_subagent. If so, fix it to partial updates.
-2. Is RQ-Interview registered or re-synced by any script (req-interview-api or anywhere else)? If so, that script needs on_complete too, or the next sync will remove the chain.
+Principle for this MR: existing behaviour must not change. The MCP adds; REST, the web UI and Temporal callers must behave exactly as before. Check !61 against that and fix:
+1. on_complete chains only fire for jobs dispatched through MCP. Jobs dispatched via REST (web UI, Temporal, anything else) never chain, even if the agent has on_complete set. Add a test for each case.
+2. Confirm REST /api/dispatch, /api/dispatch/stream and /api/dispatched-results return exactly what they did before: same events, same fields, same deltas. List anything that changed.
+3. Confirm the allow_as_subagent code changes nothing while the flag is false.
+Report, push to !61, then stop.
