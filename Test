@@ -1,5 +1,4 @@
-Two tweaks to the note:
-1. Retitle it "Known gap: no Postgres integration tests". Say "CI currently has no database" instead of "by design", and end with "Follow-up: ticket for Postgres integration tests".
-2. The note relies on the ingress smoke script, so it must be in the repo. Rename scripts/tmp_ingress_mcp_smoke.py to scripts/smoke_mcp_ingress.py, grep it to confirm it contains no key or token (it must read PLAT_AGENT_GATEWAY from the environment), commit it, and update the reference in the note.
-
-Then carry on: push, pipeline, deploy to dev, run the smoke, and report per call.
+Before running the smoke again:
+1. Show SEC-ACCESS's allowed_tools and allowed_mcps. If any of them can write (create or comment on Jira/GitLab/Confluence, write or promote workspace files), stop and tell me. Don't run it.
+2. In the script, a call that ends with a final result in under 60s is INCONCLUSIVE, not a pass or a fail. Only a stream that stays open past 60s and ends with a final result is a pass.
+3. Then run it and report per call: time to first byte, stream duration, how it ended, and the job_id.
