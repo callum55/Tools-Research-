@@ -1,6 +1,5 @@
-Stop on the test harness. Don't change _patch_base_schema or mutate table schemas, and don't write test rows to the dev DB.
+Two tweaks to the note:
+1. Retitle it "Known gap: no Postgres integration tests". Say "CI currently has no database" instead of "by design", and end with "Follow-up: ticket for Postgres integration tests".
+2. The note relies on the ingress smoke script, so it must be in the repo. Rename scripts/tmp_ingress_mcp_smoke.py to scripts/smoke_mcp_ingress.py, grep it to confirm it contains no key or token (it must read PLAT_AGENT_GATEWAY from the environment), commit it, and update the reference in the note.
 
-1. Revert any test-harness changes from this attempt. Keep the postgresql dialect import fix.
-2. Add one DB-free regression test: build the dedupe insert statement and compile it with the postgresql dialect. Assert the SQL contains ON CONFLICT (idempotency_key) WHERE <exactly the partial index predicate> DO NOTHING. Building the statement is what threw, so this catches the bug without a database.
-3. Run the existing suite, push, let the pipeline pass, deploy to dev, then run the full ingress smoke. Its duplicate-POST check is the real-Postgres test.
-4. Add a note to docs/decisions that the suite has no Postgres integration tests, and stop there. Don't build them now.
+Then carry on: push, pipeline, deploy to dev, run the smoke, and report per call.
