@@ -1,4 +1,58 @@
-Before running the smoke again:
-1. Show SEC-ACCESS's allowed_tools and allowed_mcps. If any of them can write (create or comment on Jira/GitLab/Confluence, write or promote workspace files), stop and tell me. Don't run it.
-2. In the script, a call that ends with a final result in under 60s is INCONCLUSIVE, not a pass or a fail. Only a stream that stays open past 60s and ends with a final result is a pass.
-3. Then run it and report per call: time to first byte, stream duration, how it ended, and the job_id.
+You're making a multi-phase change to the platform's MCP server. Follow the rules, do the phases in order, and stop at every checkpoint.
+
+RULES (all phases)
+- Keep everything generic: no agent-specific tools or code paths.
+- Never merge, deploy or promote anything. I merge and deploy to dev myself.
+- Don't touch run execution or the reaper.
+- No kubectl or cluster commands; I don't have access.
+- Read PLAT_AGENT_GATEWAY from the environment. Never write it to files, logs or output.
+- Don't write to the dev DB directly. Read-only queries are fine.
+- Tests must exercise the real code path, not mock the thing being tested. New SQL gets a DB-free test that compiles it with the postgresql dialect. Schema changes ship as migrations.
+- Keep a running log in .agent-progress.md and add it to .git/info/exclude: current phase, decisions, branches, MRs, job ids. If I start a new session, read it first and carry on from the last checkpoint.
+- At each checkpoint, stop, print a report in this format (max 25 lines), and wait for me to reply "continue":
+  CHECKPOINT <n>: <name>
+  Done:
+  Findings / results:
+  Decisions needed:
+  Needs from you:
+  Next:
+- If something unexpected blocks you or needs a decision, stop with a CHECKPOINT BLOCKED report instead of guessing.
+
+PHASE A: read-only investigation
+a) How the web UI's Finish & Generate works: endpoint, code path, which interview agent it uses, and how it hands the session/workspace to RQ-Pack.
+b) Why RQ-Pack dispatched via MCP reported RQ-STORY, RQ-FLOW and RQ-REVIEW as unavailable (job 08f24775-cb69-4baa-9c6d-303884c0b446). Compare with a UI-triggered RQ-Pack run: allowed_subagents, registration on dev, and whether MCP-dispatched runs resolve subagents under a different group or permission scope.
+c) Which of RQ-INT and RQ-Interview is canonical, and what the other one is for.
+CHECKPOINT 1. Needs from you: approval, and the ticket number for Phase B's branch.
+
+PHASE B: generic fixes (new branch and MR)
+1. Standard result contract for all agents: status (needs_user_input | complete | failed), question, options, documents [{name, mimeType, content}], summary. Map the existing envelope fields onto it.
+2. Generic reply(session_id, user_text) tool that continues whichever agent owns the session. Its description must tell the caller to pass the user's words verbatim and never answer the agent's questions itself.
+3. Per-agent on_complete setting on the agent record: when a run ends with status complete, the server dispatches the configured next agent in the same session/workspace and returns its job_id. Cap chains at 3 steps and reject cycles. Don't set it on dev; give me the exact call to set RQ-Interview → RQ-Pack. Don't change the UI, but note whether Finish & Generate could use the same mechanism.
+4. Documents in a result come back as their own MCP content items with their mimeType, the summary as text, and the envelope as structuredContent.
+5. Progress messages become readable status lines built from agent events (e.g. "Running RQ-STORY"). Never send raw output fragments.
+6. Fix the subagent issue found in Phase A.
+Push and open the MR.
+CHECKPOINT 2: ready to merge. Include changed files, migrations, and exact deploy steps, including the on_complete call. Needs from you: merge, deploy to dev, set on_complete, then reply "deployed".
+
+PHASE C: verify on dev
+Update scripts/smoke_mcp_ingress.py and run it against https://api-platform-agents-api.apps.bss.dev.gcp/mcp/:
+1. Start an RQ-Interview session with a short brief, send two scripted answers via reply, then "No, that's everything" via reply.
+2. Confirm the chain started RQ-Pack in the same session and returned its job_id.
+3. Wait on RQ-Pack's result. Confirm the pack came back as a text/markdown content item, the progress lines were readable, and no review agent was reported unavailable.
+For each call report: time to first byte, stream duration, how it ended, and the job_id. A stream that ends with a final result in under 60s is INCONCLUSIVE for the long-run check, not a pass.
+CHECKPOINT 3. Needs from you: "continue", and the ticket number for Phase D's branch.
+
+PHASE D: quick improvements (new branch and MR)
+1. cancel_job(job_id) tool. Cooperative: set cancel_requested on the dispatched row; the running task checks it between agent steps and ends with status cancelled. It must work whichever pod receives the cancel.
+2. list_agents returns, per agent: can_write (true if any allowed tool can write or any allowed MCP exposes tools not marked readOnly; unknown counts as true) and typical_run_seconds (p50 and p90 of succeeded runs over the last 30 days).
+3. Forgiving agent names in dispatch and list_agents: case-insensitive, punctuation ignored, closest match when unambiguous. When ambiguous, return the candidates instead of guessing.
+4. If the web UI is in this repo, My History groups jobs by session, one expandable row per session. If it isn't, say where it lives and skip this item.
+Push and open the MR.
+CHECKPOINT 4: ready to merge, with deploy steps. Needs from you: merge, deploy, then reply "deployed".
+
+PHASE E: verify the improvements on dev
+Extend the smoke script:
+1. Dispatch DS-REVIEW with wait=true and a progressToken. After 90s, call cancel_job from a second connection. Pass = the stream stayed open past 60s and ended with status cancelled.
+2. Check the list_agents fields for RQ-Interview and SEC-ACCESS.
+3. Dispatch using the name "rq interview" and confirm it resolves to the right agent.
+CHECKPOINT 5: final report, then stop.
