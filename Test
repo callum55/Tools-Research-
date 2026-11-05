@@ -1,15 +1,7 @@
-Goal: make MCP tool calls survive opencode, pi and Istio. Work in small steps and run the tests after each one.
+Go ahead with Step 2, with these amendments:
 
-Step 1: confirm before changing anything, and report:
-a) The Istio VirtualService for /api/mcp: retry attempts, perTryTimeout, retryOn, and any route timeout
-b) Query the dispatched table for rows with the same agent and task created within 30s of each other (duplicate dispatches)
-c) Every code path in app/api/routes/mcp.py that returns JSON instead of SSE
-
-Step 2: fix:
-1. Use SSE for any tools/call that may wait more than 2s (dispatch with wait, get_result with wait), whether or not _meta.progressToken is present. Send headers immediately and an SSE comment keepalive (": ping") every 15s. Only send notifications/progress when the client gave a progressToken.
-2. get_result long-polls for up to MCP_LONGPOLL_SECONDS (default 50; must stay under 60s client timeouts), then returns status "running" with the job_id.
-3. Helm/Istio: set retries to 0 for the /api/mcp route, or limit retryOn to connect-failure,refused-stream.
-4. Make dispatch retry-safe: dedupe on (API key, JSON-RPC request id, args hash) for 60s, because that is exactly what a proxy retry resends.
-5. Fix the docs: remove the claim that clients auto-inject progressToken. opencode does not.
-
-Do not touch run execution, the reaper or agent definitions in this phase. Finish with a list of changed files and how to test with scripts/tmp_local_mcp_smoke.py, including one run longer than 60s.
+1. Istio: the new /mcp match block needs timeout: 330s as well as retries attempts: 0. The current 60s route timeout cuts every SSE stream at 60s regardless of pings, and MCP_STREAM_WAIT_CAP_SECONDS is 300. Do the same for /api/dispatch/stream. Put both blocks before the catch-all, in the dev and prod templates.
+2. Dedupe: not in-memory. Add a nullable idempotency_key column on dispatched with a unique index (via a migration), key = hash(API key, JSON-RPC request id, args). On conflict, return the existing job instead of dispatching.
+3. Check whether the 0.5s RQ-Interview pair shared a JSON-RPC request id, if that is recorded anywhere. From now on, log the JSON-RPC request id on every tools/call. Report what you find; if the ids differed, the caller sent the call twice and we'll handle that separately.
+4. Once /mcp has its own route with no retries, the 3.5s JSON cap isn't needed there. Use MCP_LONGPOLL_SECONDS for the JSON fallback path too.
+5. The >60s smoke test must run against the dev ingress URL, not localhost, after the Helm change is deployed to dev.
