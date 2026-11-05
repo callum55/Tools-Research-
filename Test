@@ -1,10 +1,4 @@
-Not ready to merge. Fix these, then report as CHECKPOINT 2b:
-1. Chain trigger: on_complete must fire only when the run's result says it's finished, not on every successful job. If the result has a status field, chain only when it's "complete"; if it has none, chain on job success. Test: an RQ-Interview turn with status needs-input does NOT chain; status complete does.
-2. Return the chained job_id in the parent's result (dispatch, reply and get_result), so the caller can wait on it.
-3. Remove the per-request on_complete override. Stored chains must run the same permission check as a direct dispatch, under the original caller's identity. Add a test.
-4. reply(session_id, user_text): infer the agent and workspace from the session. The tool description must tell the caller to pass the user's words verbatim and never answer the agent's questions itself. Show me the final description text.
-5. When get_result or a dispatch result contains a document (RQ-Interview's document, RQ-Pack's markdown), return it as its own text/markdown content item, not only via get_document.
-6. Confirm raw output deltas are no longer sent as progress messages, only readable status lines.
-7. Discard the uncommitted smoke-script change. Never use SEC-ACCESS in smoke tests.
-8. Deploy steps: say whether setup.sql's ALTER TABLE runs automatically on deploy or whether I run it, and include the MR link.
-Keep unknown-field behaviour as it is.
+Close. Three fixes before I merge, then re-report as CHECKPOINT 2c:
+1. chained_job_id race: get_result(wait=true) returns the moment the parent completes, which is exactly the window you described, so waiting callers will routinely miss the chained id. Create the chained job record and set chained_job_id before marking the parent complete (same transaction if possible), then start the chained run. Add a test that a waiting caller always sees chained_job_id.
+2. reply description: remove "or relay that they haven't answered yet". Replace it with: "If the user's message doesn't answer every question, pass it as-is; the agent will follow up."
+3. Deploy steps: the schema change must be applied before the new code reaches dev. Give me only the exact ALTER TABLE statements to run (not the whole setup.sql), and confirm they're safe with the currently deployed code. Order: run the SQL, then merge !61, then the sdlc-temporal MR, then the sync. Also include the exact management API call to set RQ-Interview's on_complete_agent and on_complete_task_template, with the full template text.
