@@ -1,1 +1,10 @@
+Read-only: do not change any files. Inspect this repo and give a compact overview, max 40 lines, structured lists only:
 
+1. Stack: Python version; pydantic-ai, mcp, fastmcp, fasta2a versions from the lockfile; package source (ProGet or PyPI)
+2. Running an agent: in-process (Agent.run / run_stream / iter) or a REST endpoint? List endpoints as method + path, and flag any that return SSE or streamed responses
+3. Run lifecycle: is there a run_id? Where are run state and events stored (DB, Temporal, memory)? Can a run be polled or resumed?
+4. Agents: where they're defined, how primary/sub agents and allowed tools/MCPs are wired, what output_type they use
+5. Existing MCP server code: file paths, library, transport (stdio or HTTP), tool names and signatures, any progress or streaming code
+6. Model config: model names, base_url/proxy, and whether streaming is on for GLM
+7. Deployment and auth: how the API is reached (local, GKE, Istio/Okta) and what auth headers it needs
+8. Anything half-built or marked TODO around MCP, A2A or streaming
