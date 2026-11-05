@@ -1,9 +1,5 @@
-Re-read .agent-progress.md before anything else; the compacted summary may have lost details. Then continue from Checkpoint 1 with these decisions, and add them to the log first.
-
-1. Subagents: before changing code, check whether RQ-STORY, RQ-FLOW and RQ-REVIEW were ever dispatched directly (not as a child run) in the last 30 days, and find where they're registered (the consumer script). If they're only ever used under RQ-Pack: no code change. Give me the exact update to set them to type 'sub', plus the fix to the registration script so it doesn't revert. If they are dispatched directly: propose an explicit opt-in (e.g. an allow_as_subagent flag) instead of letting every primary act as a subagent, with nesting depth capped.
-2. Correction: job 08f24775 was dispatched from pi via MCP, not from the UI. Find a genuinely UI-triggered RQ-Pack job and confirm whether it also reported its subagents as unavailable.
-3. RQ-Interview is canonical for the chain.
-4. on_complete must include a task template, because the UI sends RQ-Pack transcript + coverage, not a session. Make it on_complete = {agent, task_template}, with placeholders for the session transcript and the completed run's result fields. Configure RQ-Interview → RQ-Pack with a template equivalent to buildDocTask.
-5. Create Phase B's branch from main, not from BSSPLAT-483-dialect-insert-fix. Ticket: <TICKET>.
-
-Report items 1 and 2 as CHECKPOINT 1b, then wait for "continue" before building Phase B.
+Approved, with these changes:
+1. Don't use the raw SQL UPDATE on dev. Set the flag through the management API with a change_reason, or by running the register script after deploy, so agent versioning stays correct. Include allow_as_subagent in configuration_hash.
+2. The register script lives in sdlc-temporal, so that's a separate MR. In Checkpoint 2, give the deploy order: platform-agents-api first (migration, and the API accepts the field), then the sdlc-temporal MR, then run the sync. Check whether the management API rejects unknown fields; if it does, say so, because then the order is mandatory.
+3. Tests: a primary agent with the flag resolves as a subagent; a primary without it is still rejected; child jobs can't spawn subagents; the register script's payload includes the flag.
+Continue with Phase B.
