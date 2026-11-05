@@ -1,4 +1,3 @@
-Close. Three fixes before I merge, then re-report as CHECKPOINT 2c:
-1. chained_job_id race: get_result(wait=true) returns the moment the parent completes, which is exactly the window you described, so waiting callers will routinely miss the chained id. Create the chained job record and set chained_job_id before marking the parent complete (same transaction if possible), then start the chained run. Add a test that a waiting caller always sees chained_job_id.
-2. reply description: remove "or relay that they haven't answered yet". Replace it with: "If the user's message doesn't answer every question, pass it as-is; the agent will follow up."
-3. Deploy steps: the schema change must be applied before the new code reaches dev. Give me only the exact ALTER TABLE statements to run (not the whole setup.sql), and confirm they're safe with the currently deployed code. Order: run the SQL, then merge !61, then the sdlc-temporal MR, then the sync. Also include the exact management API call to set RQ-Interview's on_complete_agent and on_complete_task_template, with the full template text.
+Two checks before I merge, answer briefly:
+1. Does PATCH /api/agents/update apply only the fields sent, or does it reset omitted fields to their defaults? If it resets them, the sdlc-temporal sync or any re-registration could wipe on_complete or allow_as_subagent. If so, fix it to partial updates.
+2. Is RQ-Interview registered or re-synced by any script (req-interview-api or anywhere else)? If so, that script needs on_complete too, or the next sync will remove the chain.
