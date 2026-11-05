@@ -1,10 +1,15 @@
-Read-only: do not change any files. Inspect this repo and give a compact overview, max 40 lines, structured lists only:
+Goal: make MCP tool calls survive opencode, pi and Istio. Work in small steps and run the tests after each one.
 
-1. Stack: Python version; pydantic-ai, mcp, fastmcp, fasta2a versions from the lockfile; package source (ProGet or PyPI)
-2. Running an agent: in-process (Agent.run / run_stream / iter) or a REST endpoint? List endpoints as method + path, and flag any that return SSE or streamed responses
-3. Run lifecycle: is there a run_id? Where are run state and events stored (DB, Temporal, memory)? Can a run be polled or resumed?
-4. Agents: where they're defined, how primary/sub agents and allowed tools/MCPs are wired, what output_type they use
-5. Existing MCP server code: file paths, library, transport (stdio or HTTP), tool names and signatures, any progress or streaming code
-6. Model config: model names, base_url/proxy, and whether streaming is on for GLM
-7. Deployment and auth: how the API is reached (local, GKE, Istio/Okta) and what auth headers it needs
-8. Anything half-built or marked TODO around MCP, A2A or streaming
+Step 1: confirm before changing anything, and report:
+a) The Istio VirtualService for /api/mcp: retry attempts, perTryTimeout, retryOn, and any route timeout
+b) Query the dispatched table for rows with the same agent and task created within 30s of each other (duplicate dispatches)
+c) Every code path in app/api/routes/mcp.py that returns JSON instead of SSE
+
+Step 2: fix:
+1. Use SSE for any tools/call that may wait more than 2s (dispatch with wait, get_result with wait), whether or not _meta.progressToken is present. Send headers immediately and an SSE comment keepalive (": ping") every 15s. Only send notifications/progress when the client gave a progressToken.
+2. get_result long-polls for up to MCP_LONGPOLL_SECONDS (default 50; must stay under 60s client timeouts), then returns status "running" with the job_id.
+3. Helm/Istio: set retries to 0 for the /api/mcp route, or limit retryOn to connect-failure,refused-stream.
+4. Make dispatch retry-safe: dedupe on (API key, JSON-RPC request id, args hash) for 60s, because that is exactly what a proxy retry resends.
+5. Fix the docs: remove the claim that clients auto-inject progressToken. opencode does not.
+
+Do not touch run execution, the reaper or agent definitions in this phase. Finish with a list of changed files and how to test with scripts/tmp_local_mcp_smoke.py, including one run longer than 60s.
