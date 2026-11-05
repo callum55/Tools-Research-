@@ -1,7 +1,7 @@
-Go ahead with Step 2, with these amendments:
+SSO is refreshed. Before you push and update MR !58, fix the idempotency ordering:
 
-1. Istio: the new /mcp match block needs timeout: 330s as well as retries attempts: 0. The current 60s route timeout cuts every SSE stream at 60s regardless of pings, and MCP_STREAM_WAIT_CAP_SECONDS is 300. Do the same for /api/dispatch/stream. Put both blocks before the catch-all, in the dev and prod templates.
-2. Dedupe: not in-memory. Add a nullable idempotency_key column on dispatched with a unique index (via a migration), key = hash(API key, JSON-RPC request id, args). On conflict, return the existing job instead of dispatching.
-3. Check whether the 0.5s RQ-Interview pair shared a JSON-RPC request id, if that is recorded anywhere. From now on, log the JSON-RPC request id on every tools/call. Report what you find; if the ids differed, the caller sent the call twice and we'll handle that separately.
-4. Once /mcp has its own route with no retries, the 3.5s JSON cap isn't needed there. Use MCP_LONGPOLL_SECONDS for the JSON fallback path too.
-5. The >60s smoke test must run against the dev ingress URL, not localhost, after the Helm change is deployed to dev.
+1. Write idempotency_key in the same INSERT that creates the dispatched row: INSERT ... ON CONFLICT DO NOTHING RETURNING id. The conflict target must include the partial index's WHERE clause (index_where in SQLAlchemy). Only start the agent task if this request created the row; otherwise return the existing job.
+2. Remove the post-dispatch stamping and the degrade-to-fresh-dispatch path. If the insert fails, the call fails.
+3. Add a test: two concurrent identical tools/call requests produce exactly one dispatched row and one agent run.
+
+Then push, update MR !58, and after the dev deploy run the ingress smoke test. In the report, include how long each stream stayed open and how it ended.
